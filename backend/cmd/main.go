@@ -1,0 +1,112 @@
+package main
+
+import (
+	"context"
+	"log"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+
+	grpcHandler "github.com/bookreading/backend/internal/delivery/grpc"
+	"github.com/bookreading/backend/internal/delivery/grpc/pb"
+	httpServer "github.com/bookreading/backend/internal/delivery/http"
+	"github.com/bookreading/backend/internal/domain"
+	"github.com/bookreading/backend/internal/infrastructure/aiservice"
+	postgresRepo "github.com/bookreading/backend/internal/repository/postgres"
+	usecaseImpl "github.com/bookreading/backend/internal/usecase"
+
+	_ "github.com/lib/pq"
+	"github.com/jmoiron/sqlx"
+	"google.golang.org/grpc"
+)
+
+func main() {
+	// Get configuration from environment
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		databaseURL = "postgres://bookreading:bookreading123@localhost:5432/bookreading?sslmode=disable"
+	}
+
+	aiServiceURL := os.Getenv("AI_SERVICE_URL")
+	if aiServiceURL == "" {
+		aiServiceURL = "http://localhost:8000"
+	}
+
+	httpPort := os.Getenv("HTTP_PORT")
+	if httpPort == "" {
+		httpPort = "8080"
+	}
+
+	// Connect to database
+	db, err := sqlx.Connect("postgres", databaseURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer db.Close()
+
+	if err := db.Ping(); err != nil {
+		log.Fatalf("Failed to ping database: %v", err)
+	}
+
+	log.Println("Connected to database successfully")
+
+	// Initialize repositories
+	var novelRepo domain.NovelRepository = postgresRepo.NewNovelRepository(db)
+	var chapterRepo domain.ChapterRepository = postgresRepo.NewChapterRepository(db)
+	var terminologyRepo domain.TerminologyRepository = postgresRepo.NewTerminologyRepository(db)
+
+	// Initialize AI service client
+	aiClient := aiservice.NewAIServiceClient(aiServiceURL)
+
+	// Initialize use cases
+	var novelUseCase domain.NovelUseCase = usecaseImpl.NewNovelUseCase(novelRepo, chapterRepo, terminologyRepo, aiClient)
+	var chapterUseCase domain.ChapterUseCase = usecaseImpl.NewChapterUseCase(chapterRepo, terminologyRepo, nil, aiClient)
+	var terminologyUseCase domain.TerminologyUseCase = usecaseImpl.NewTerminologyUseCase(terminologyRepo, novelRepo)
+
+	// Start HTTP server
+	httpSrv := httpServer.NewServer(db, httpPort)
+	go func() {
+		if err := httpSrv.Start(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("HTTP server error: %v", err)
+		}
+	}()
+	log.Printf("HTTP server started on :%s", httpPort)
+
+	// Create gRPC server
+	grpcServer := grpcHandler.NewBookReadingServer(novelUseCase, chapterUseCase, terminologyUseCase)
+
+	// Start gRPC server
+	lis, err := net.Listen("tcp", ":9090")
+	if err != nil {
+		log.Fatalf("Failed to listen: %v", err)
+	}
+
+	grpcServerImpl := grpc.NewServer()
+	pb.RegisterBookReadingServiceServer(grpcServerImpl, grpcServer)
+
+	go func() {
+		log.Println("Starting gRPC server on :9090")
+		if err := grpcServerImpl.Serve(lis); err != nil {
+			log.Fatalf("Failed to serve gRPC: %v", err)
+		}
+	}()
+
+	// Graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutting down servers...")
+
+	// Shutdown HTTP server
+	if err := httpSrv.Shutdown(context.Background()); err != nil {
+		log.Printf("HTTP server shutdown error: %v", err)
+	}
+
+	// Shutdown gRPC server
+	grpcServerImpl.GracefulStop()
+
+	log.Println("Servers stopped")
+}

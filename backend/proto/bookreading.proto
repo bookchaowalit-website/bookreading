@@ -1,0 +1,172 @@
+syntax = "proto3";
+
+package bookreading;
+
+option go_package = "github.com/bookreading/backend/internal/delivery/grpc/pb";
+
+service BookReadingService {
+  // Novel operations
+  rpc CreateNovel(CreateNovelRequest) returns (NovelResponse);
+  rpc GetNovel(GetNovelRequest) returns (NovelResponse);
+  rpc ListNovels(ListNovelsRequest) returns (NovelListResponse);
+  rpc ScrapeNovel(ScrapeNovelRequest) returns (ScrapeNovelResponse);
+  
+  // Chapter operations
+  rpc GetChapter(GetChapterRequest) returns (ChapterResponse);
+  rpc ListChapters(ListChaptersRequest) returns (ChapterListResponse);
+  rpc TranslateChapter(TranslateChapterRequest) returns (ChapterResponse);
+  
+  // Terminology operations
+  rpc GetTerminology(GetTerminologyRequest) returns (TerminologyListResponse);
+  rpc AddTerminology(AddTerminologyRequest) returns (TerminologyResponse);
+  rpc UpdateTerminology(UpdateTerminologyRequest) returns (TerminologyResponse);
+}
+
+// Novel messages
+message CreateNovelRequest {
+  string title = 1;
+  string original_title = 2;
+  string source_url = 3;
+  string source_language = 4;
+  string target_language = 5;
+  string author = 6;
+  string description = 7;
+  string cover_image_url = 8;
+}
+
+message GetNovelRequest {
+  string novel_id = 1;
+}
+
+message ListNovelsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string status = 3;
+}
+
+message NovelResponse {
+  Novel novel = 1;
+}
+
+message NovelListResponse {
+  repeated Novel novels = 1;
+  int32 total_count = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message ScrapeNovelRequest {
+  string url = 1;
+  string source_language = 2;
+  string target_language = 3;
+}
+
+message ScrapeNovelResponse {
+  string novel_id = 1;
+  int32 chapters_scraped = 2;
+  string status = 3;
+}
+
+// Chapter messages
+message GetChapterRequest {
+  string chapter_id = 1;
+}
+
+message ListChaptersRequest {
+  string novel_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message TranslateChapterRequest {
+  string chapter_id = 1;
+  string target_language = 2;
+  bool use_context = 3;
+}
+
+message ChapterResponse {
+  Chapter chapter = 1;
+}
+
+message ChapterListResponse {
+  repeated Chapter chapters = 1;
+  int32 total_count = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+// Terminology messages
+message GetTerminologyRequest {
+  string novel_id = 1;
+}
+
+message AddTerminologyRequest {
+  string novel_id = 1;
+  string term = 2;
+  string original_term = 3;
+  string translation = 4;
+  string term_type = 5;
+  string description = 6;
+}
+
+message UpdateTerminologyRequest {
+  string terminology_id = 1;
+  string term = 2;
+  string translation = 3;
+  string description = 4;
+}
+
+message TerminologyResponse {
+  Terminology terminology = 1;
+}
+
+message TerminologyListResponse {
+  repeated Terminology terminologies = 1;
+}
+
+// Domain models
+message Novel {
+  string id = 1;
+  string title = 2;
+  string original_title = 3;
+  string source_url = 4;
+  string source_language = 5;
+  string target_language = 6;
+  string author = 7;
+  string description = 8;
+  string cover_image_url = 9;
+  string status = 10;
+  int32 chapter_count = 11;
+  string created_at = 12;
+  string updated_at = 13;
+}
+
+message Chapter {
+  string id = 1;
+  string novel_id = 2;
+  int32 chapter_number = 3;
+  string title = 4;
+  string original_title = 5;
+  string source_url = 6;
+  string content = 7;
+  string original_content = 8;
+  int32 word_count = 9;
+  bool is_translated = 10;
+  bool is_scraped = 11;
+  string created_at = 12;
+  string updated_at = 13;
+}
+
+message Terminology {
+  string id = 1;
+  string novel_id = 2;
+  string term = 3;
+  string original_term = 4;
+  string translation = 5;
+  string term_type = 6;
+  string description = 7;
+  bool is_auto_generated = 8;
+  float confidence_score = 9;
+  string created_at = 10;
+  string updated_at = 11;
+}

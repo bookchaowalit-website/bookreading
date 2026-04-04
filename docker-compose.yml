@@ -1,0 +1,83 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: bookreading-db
+    environment:
+      POSTGRES_USER: bookreading
+      POSTGRES_PASSWORD: bookreading123
+      POSTGRES_DB: bookreading
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - bookreading-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bookreading-backend
+    ports:
+      - "9091:9090"
+      - "8888:8080"
+    environment:
+      DATABASE_URL: postgres://bookreading:bookreading123@postgres:5432/bookreading?sslmode=disable
+      AI_SERVICE_URL: http://ai-service:8000
+      JWT_SECRET: your-production-jwt-secret-change-this
+      HTTP_PORT: "8080"
+    depends_on:
+      - postgres
+      - ai-service
+    networks:
+      - bookreading-network
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: bookreading-ai-service
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgres://bookreading:bookreading123@postgres:5432/bookreading?sslmode=disable
+      # LLM Provider Configuration (choose one: openai or gemini)
+      LLM_PROVIDER: openai
+      # OpenAI API Key (for GPT-4o/GPT-5)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-your-openai-api-key-here}
+      # Google Gemini API Key
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-your-gemini-api-key-here}
+      # Optional: Override default models
+      # OPENAI_MODEL: gpt-4o
+      # GEMINI_MODEL: gemini-1.5-pro
+    depends_on:
+      - postgres
+    networks:
+      - bookreading-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_AI_SERVICE_URL: http://127.0.0.1:8000
+        NEXT_PUBLIC_BACKEND_URL: http://127.0.0.1:8888
+    container_name: bookreading-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_AI_SERVICE_URL: http://127.0.0.1:8000
+      NEXT_PUBLIC_BACKEND_URL: http://127.0.0.1:8888
+    depends_on:
+      - backend
+      - ai-service
+    networks:
+      - bookreading-network
+
+networks:
+  bookreading-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

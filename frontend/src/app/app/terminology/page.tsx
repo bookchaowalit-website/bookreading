@@ -1,0 +1,239 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+
+interface Term {
+  original: string;
+  translation: string;
+  type: string;
+  description: string;
+}
+
+export default function TerminologyPage() {
+  const [terms, setTerms] = useState<Term[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newTerm, setNewTerm] = useState<Term>({
+    original: '',
+    translation: '',
+    type: 'character',
+    description: '',
+  });
+
+  useEffect(() => {
+    // Load terminology from localStorage
+    const savedTerms = localStorage.getItem('customTerminology');
+    if (savedTerms) {
+      setTerms(JSON.parse(savedTerms));
+    } else {
+      // Default terms
+      const defaultTerms: Term[] = [
+        { original: '云澈', translation: 'หยุนเช่อ', type: 'character', description: 'Main protagonist' },
+        { original: '沐玄音', translation: 'มู่เสวียนอิ่น', type: 'character', description: 'Ice Phoenix Goddess' },
+        { original: '夏倾月', translation: 'เซี่ยชิงเยว่', type: 'character', description: 'Moon God Emperor' },
+        { original: '深渊', translation: 'เหวี่ยนลึก', type: 'location', description: 'The Abyss' },
+        { original: '渊皇', translation: 'จักรพรรดิเหวี่ยน', type: 'character', description: 'Abyss Emperor' },
+      ];
+      setTerms(defaultTerms);
+      localStorage.setItem('customTerminology', JSON.stringify(defaultTerms));
+    }
+  }, []);
+
+  const saveTerms = (newTerms: Term[]) => {
+    setTerms(newTerms);
+    localStorage.setItem('customTerminology', JSON.stringify(newTerms));
+  };
+
+  const handleAddTerm = () => {
+    if (!newTerm.original || !newTerm.translation) return;
+    
+    const updatedTerms = [...terms, newTerm];
+    saveTerms(updatedTerms);
+    setNewTerm({ original: '', translation: '', type: 'character', description: '' });
+    setShowAddModal(false);
+  };
+
+  const handleDeleteTerm = (index: number) => {
+    const updatedTerms = terms.filter((_, i) => i !== index);
+    saveTerms(updatedTerms);
+  };
+
+  const filteredTerms = terms.filter(term =>
+    term.original.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    term.translation.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const termTypes = [
+    { value: 'character', label: '👤 ตัวละคร', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
+    { value: 'location', label: '📍 สถานที่', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' },
+    { value: 'item', label: '⚔️ ไอเท็ม', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' },
+    { value: 'technique', label: '⚡ ท่าไม้ตาย', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' },
+    { value: 'organization', label: '🏛️ องค์กร', color: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300' },
+    { value: 'other', label: '📝 อื่นๆ', color: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' },
+  ];
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">📝 คำศัพท์</h1>
+          <p className="text-gray-500 dark:text-gray-400">จัดการคำศัพท์สำหรับการแปล {terms.length} คำ</p>
+        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
+        >
+          + เพิ่มคำศัพท์
+        </button>
+      </div>
+
+      {/* Search */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="🔍 ค้นหาคำศัพท์..."
+          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-white"
+        />
+      </div>
+
+      {/* Terms List */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        {filteredTerms.length === 0 ? (
+          <div className="p-8 text-center">
+            <div className="text-4xl mb-4">📭</div>
+            <p className="text-gray-500 dark:text-gray-400">
+              {searchQuery ? 'ไม่พบคำศัพท์' : 'ยังไม่มีคำศัพท์'}
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-200 dark:divide-gray-700">
+            {filteredTerms.map((term, index) => {
+              const typeInfo = termTypes.find(t => t.value === term.type) || termTypes[5];
+              return (
+                <div
+                  key={index}
+                  className="p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-1">
+                        <span className="font-medium text-gray-900 dark:text-white">
+                          {term.original}
+                        </span>
+                        <span className="text-gray-400">→</span>
+                        <span className="text-blue-600 dark:text-blue-400 font-medium">
+                          {term.translation}
+                        </span>
+                      </div>
+                      {term.description && (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          {term.description}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs px-2 py-1 rounded-full ${typeInfo.color}`}>
+                        {typeInfo.label}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteTerm(index)}
+                        className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Add Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
+              เพิ่มคำศัพท์ใหม่
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">
+                  คำต้นฉบับ (จีน)
+                </label>
+                <input
+                  type="text"
+                  value={newTerm.original}
+                  onChange={(e) => setNewTerm({ ...newTerm, original: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                  placeholder="例: 萧炎"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">
+                  คำแปล (ไทย)
+                </label>
+                <input
+                  type="text"
+                  value={newTerm.translation}
+                  onChange={(e) => setNewTerm({ ...newTerm, translation: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                  placeholder="例: เซียวเหยียน"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">
+                  ประเภท
+                </label>
+                <select
+                  value={newTerm.type}
+                  onChange={(e) => setNewTerm({ ...newTerm, type: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                >
+                  {termTypes.map(type => (
+                    <option key={type.value} value={type.value}>{type.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">
+                  คำอธิบาย (ไม่บังคับ)
+                </label>
+                <input
+                  type="text"
+                  value={newTerm.description}
+                  onChange={(e) => setNewTerm({ ...newTerm, description: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                  placeholder="คำอธิบายเพิ่มเติม"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="flex-1 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleAddTerm}
+                className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                บันทึก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

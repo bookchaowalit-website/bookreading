@@ -1,0 +1,203 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { FEATURED_NOVELS } from '@/lib/novels';
+
+interface SavedNovel {
+  id: string;
+  novelId: string;
+  url: string;
+  title: string;
+  originalTitle: string;
+  author: string;
+  chapterNumber: number;
+  content: string;
+  translatedContent: string;
+  terminology: any[];
+  savedAt: number;
+  lastReadAt: number;
+  readingProgress: number;
+}
+
+export default function LibraryPage() {
+  const [library, setLibrary] = useState<SavedNovel[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'recent' | 'title' | 'progress'>('recent');
+
+  useEffect(() => {
+    const savedLibrary = localStorage.getItem('novelLibrary');
+    if (savedLibrary) {
+      let novels = JSON.parse(savedLibrary);
+
+      // Sort
+      if (sortBy === 'recent') {
+        novels.sort((a: SavedNovel, b: SavedNovel) => b.lastReadAt - a.lastReadAt);
+      } else if (sortBy === 'title') {
+        novels.sort((a: SavedNovel, b: SavedNovel) => a.title.localeCompare(b.title));
+      } else if (sortBy === 'progress') {
+        novels.sort((a: SavedNovel, b: SavedNovel) => b.readingProgress - a.readingProgress);
+      }
+
+      setLibrary(novels);
+    }
+  }, [sortBy]);
+
+  const deleteFromLibrary = (id: string) => {
+    const newLibrary = library.filter(n => n.id !== id);
+    setLibrary(newLibrary);
+    localStorage.setItem('novelLibrary', JSON.stringify(newLibrary));
+  };
+
+  const filteredLibrary = library.filter(novel =>
+    novel.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    novel.author.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">📚 ไลบรารี</h1>
+          <p className="text-gray-500 dark:text-gray-400">นิยายที่บันทึกไว้ {library.length} เรื่อง</p>
+        </div>
+        <Link
+          href="/app/reader"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
+        >
+          + เพิ่มนิยายใหม่
+        </Link>
+      </div>
+
+      {/* Featured Novels Quick Access */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">📚 นิยายแนะนำ</h3>
+        <div className="flex gap-3 overflow-x-auto pb-2">
+          {FEATURED_NOVELS.map(novel => (
+            <Link
+              key={novel.id}
+              href={`/app/reader?novel=${novel.id}`}
+              className="flex-shrink-0 flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+            >
+              <img
+                src={novel.coverUrl}
+                alt={novel.title}
+                className="w-8 h-10 object-cover rounded"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+              <div>
+                <div className="text-sm font-medium text-gray-900 dark:text-white">{novel.titleTh}</div>
+                <div className="text-xs text-gray-500">{novel.totalChapters} บท</div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* Search and Sort */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex-1">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="🔍 ค้นหานิยาย..."
+            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-900 dark:text-white"
+          />
+        </div>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as any)}
+          className="px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl dark:bg-gray-900 dark:text-white"
+        >
+          <option value="recent">อ่านล่าสุด</option>
+          <option value="title">ชื่อ</option>
+          <option value="progress">ความคืบหน้า</option>
+        </select>
+      </div>
+
+      {/* Library Grid */}
+      {filteredLibrary.length === 0 ? (
+        <div className="bg-white dark:bg-gray-900 rounded-2xl p-12 border border-gray-200 dark:border-gray-700 text-center">
+          <div className="text-6xl mb-4">📭</div>
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+            {searchQuery ? 'ไม่พบนิยาย' : 'ยังไม่มีนิยายในไลบรารี'}
+          </h3>
+          <p className="text-gray-500 dark:text-gray-400 mb-6">
+            {searchQuery ? 'ลองค้นหาด้วยคำอื่น' : 'เริ่มอ่านนิยายและบันทึกไว้'}
+          </p>
+          {!searchQuery && (
+            <Link
+              href="/app/reader"
+              className="inline-block px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
+            >
+              เริ่มอ่านนิยาย
+            </Link>
+          )}
+        </div>
+      ) : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredLibrary.map(novel => (
+            <div
+              key={novel.id}
+              className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-shadow"
+            >
+              <div className="p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-gray-900 dark:text-white truncate">
+                      {novel.title}
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                      {novel.author || 'ไม่ทราบผู้แต่ง'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => deleteFromLibrary(novel.id)}
+                    className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                  >
+                    🗑️
+                  </button>
+                </div>
+
+                <div className="mt-3 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span>บท {novel.chapterNumber}</span>
+                  <span>•</span>
+                  <span>{novel.terminology?.length || 0} คำศัพท์</span>
+                </div>
+
+                {/* Progress bar */}
+                <div className="mt-3">
+                  <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    <span>ความคืบหน้า</span>
+                    <span>{novel.readingProgress || 0}%</span>
+                  </div>
+                  <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-blue-500 to-purple-500"
+                      style={{ width: `${novel.readingProgress || 0}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+                  อ่านล่าสุด: {new Date(novel.lastReadAt).toLocaleDateString('th-TH')}
+                </div>
+
+                <Link
+                  href={`/app/reader?novel=${novel.novelId || novel.id}&chapter=${novel.chapterNumber}`}
+                  className="mt-4 block w-full py-2 text-center bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors text-sm font-medium"
+                >
+                  เปิดอ่าน
+                </Link>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
