@@ -16,8 +16,8 @@ import asyncio
 # OpenAI
 from openai import AsyncOpenAI
 
-# Google Gemini
-import google.generativeai as genai
+# Google Gemini (new SDK)
+from google import genai
 
 # Fallback: Google Translate
 from deep_translator import GoogleTranslator
@@ -119,8 +119,7 @@ class AgenticTranslator:
         if self._gemini_client is None:
             if not self.gemini_api_key:
                 raise ValueError("Gemini API key required. Set GEMINI_API_KEY environment variable.")
-            genai.configure(api_key=self.gemini_api_key)
-            self._gemini_client = genai.GenerativeModel(self.gemini_model)
+            self._gemini_client = genai.Client(api_key=self.gemini_api_key)
         return self._gemini_client
 
     # ==================== TERMINOLOGY PREPROCESSING (KEY FIX) ====================
@@ -382,12 +381,13 @@ class AgenticTranslator:
         prompt: str,
         max_tokens: int = 4000,
     ) -> Tuple[str, int]:
-        """Translate using Google Gemini"""
+        """Translate using Google Gemini (new SDK)"""
         client = self._get_gemini_client()
 
-        response = await client.generate_content_async(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
+        response = await client.aio.models.generate_content(
+            model=self.gemini_model,
+            contents=prompt,
+            config=genai.types.GenerateContentConfig(
                 max_output_tokens=max_tokens,
                 temperature=0.3,
             )

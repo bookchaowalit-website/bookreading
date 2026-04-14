@@ -5,6 +5,13 @@ import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import api, { aiApi, novelApi, chapterApi, translationApi, ExtractedTerm, Chapter as DbChapter, Novel } from '@/lib/api';
 import { FEATURED_NOVELS, getNovelById, FeaturedNovel } from '@/lib/novels';
+import ReadingProgressTracker from '@/components/ReadingProgressTracker';
+import AddBookmarkButton from '@/components/AddBookmarkButton';
+import TranslationFeedbackForm from '@/components/TranslationFeedbackForm';
+import StarRating from '@/components/StarRating';
+import { useTranslationFeedback } from '@/hooks/useTranslationFeedback';
+import { useCurrentReadingSession, useBookmarks } from '@/hooks/useReadingProgress';
+import { Bookmark } from '@/lib/types/features';
 
 type ViewMode = 'original' | 'translated' | 'sideBySide';
 type FontSize = 'small' | 'medium' | 'large' | 'xlarge';
@@ -602,6 +609,58 @@ export default function ReaderPage() {
     }
   };
 
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      switch (e.key) {
+        case 'ArrowLeft':
+          e.preventDefault();
+          handlePreviousChapter();
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          handleNextChapter();
+          break;
+        case 'Home':
+          e.preventDefault();
+          if (novelData && novelData.chapters.length > 0) handleChapterChange(0);
+          break;
+        case 'End':
+          e.preventDefault();
+          if (novelData) handleChapterChange(novelData.chapters.length - 1);
+          break;
+        case 't':
+          // Toggle view mode
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            setViewMode(prev => {
+              const modes: ViewMode[] = ['original', 'translated', 'sideBySide'];
+              const idx = modes.indexOf(prev);
+              return modes[(idx + 1) % modes.length];
+            });
+          }
+          break;
+        case 'f':
+          // Toggle font size
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            setFontSize(prev => {
+              const sizes: FontSize[] = ['small', 'medium', 'large', 'xlarge'];
+              const idx = sizes.indexOf(prev);
+              return sizes[(idx + 1) % sizes.length];
+            });
+          }
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [novelData, handleChapterChange]);
+
   const saveToLibrary = () => {
     if (!novelData || !selectedNovel || novelData.chapters.length === 0) return;
 
@@ -631,6 +690,34 @@ export default function ReaderPage() {
   const currentChapter = novelData?.chapters[novelData.currentChapterIndex];
   const translatedContent = currentChapter?.translated || '';
   const originalContent = currentChapter?.content || '';
+
+  // New feature hooks (must be after currentChapter is defined)
+  const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') || undefined : undefined;
+  const { feedbackList, qualityScore, submitFeedback } = useTranslationFeedback(
+    novelData?.novelId || '',
+    currentChapter?.chapter_number
+  );
+  const { currentProgress, saveCurrentProgress } = useCurrentReadingSession(novelData?.novelId || '');
+  const { bookmarks, addBookmark, getBookmarksForNovel } = useBookmarks(userId);
+  const novelBookmarks = novelData?.novelId ? getBookmarksForNovel(novelData.novelId) : [];
+
+  const handleAddBookmark = async (
+    _novelId: string,
+    chapterNumber: number,
+    position: number,
+    note?: string
+  ) => {
+    return addBookmark(_novelId, chapterNumber, position, note);
+  };
+
+  const handleFeedbackSubmit = async (data: {
+    rating: number;
+    comment?: string;
+    has_errors?: boolean;
+    error_details?: Array<{ type: string; description: string; original_text?: string; corrected_text?: string }>;
+  }) => {
+    return submitFeedback(data);
+  };
 
   const LoadingSpinner = ({ message }: { message: string }) => (
     <div className="flex flex-col items-center justify-center py-12">
@@ -810,6 +897,36 @@ export default function ReaderPage() {
             </div>
           </div>
 
+          {/* New: Reading Progress Tracker & Bookmark */}
+          <div className="grid sm:grid-cols-2 gap-4">
+            <ReadingProgressTracker
+              novelId={novelData.novelId || ''}
+              chapterNumber={currentChapter.chapter_number}
+              totalChapters={novelData.chapters.length}
+              scrollProgress={readingProgress}
+            />
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">🔖 ที่คั่นหนังสือ</h3>
+              <AddBookmarkButton
+                novelId={novelData.novelId || ''}
+                chapterNumber={currentChapter.chapter_number}
+                position={readingProgress}
+                onAddBookmark={handleAddBookmark}
+              />
+              {novelBookmarks.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {novelBookmarks.slice(0, 3).map((bm: Bookmark) => (
+                    <div key={bm.id} className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                      <span>🔖</span>
+                      <span>บทที่ {bm.chapter_number}</span>
+                      {bm.note && <span className="truncate">- {bm.note}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Reader Controls */}
           <div className="flex items-center justify-between bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
             {/* View Mode */}
@@ -883,7 +1000,7 @@ export default function ReaderPage() {
 
             {/* Content Display */}
             {!isTranslating && !isLoadingChapter && (
-              <div ref={contentRef} className="p-6 md:p-8 max-h-[70vh] overflow-y-auto">
+              <div ref={contentRef} className="p-6 md:p-8">
                 {viewMode === 'sideBySide' && translatedContent ? (
                   <div className="grid md:grid-cols-2 gap-8">
                     <div className="border-r border-gray-200 dark:border-gray-600 pr-6">
@@ -972,6 +1089,34 @@ export default function ReaderPage() {
                   >
                     ✨ ปรับปรุงการแปล
                   </button>
+                </div>
+
+                {/* New: Star Rating & Translation Feedback */}
+                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 space-y-4">
+                  <StarRating
+                    rating={qualityScore?.avg_rating ? Math.round(qualityScore.avg_rating) : 0}
+                    onRate={(rating) => submitFeedback({ rating, comment: undefined })}
+                    size="sm"
+                    label="ให้คะแนนบทนี้"
+                  />
+                  {qualityScore && qualityScore.feedback_count > 0 && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      คะแนนเฉลี่ย: {qualityScore.avg_rating.toFixed(1)}/5 ({qualityScore.feedback_count} คะแนน)
+                    </p>
+                  )}
+
+                  <details className="group">
+                    <summary className="cursor-pointer text-sm text-blue-600 dark:text-blue-400 hover:underline font-medium">
+                      📝 แสดงความคิดเห็นเกี่ยวกับบทนี้
+                    </summary>
+                    <div className="mt-3">
+                      <TranslationFeedbackForm
+                        novelId={novelData.novelId || ''}
+                        chapterNumber={currentChapter.chapter_number}
+                        onSubmit={handleFeedbackSubmit}
+                      />
+                    </div>
+                  </details>
                 </div>
               </div>
             )}

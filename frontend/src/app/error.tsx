@@ -1,0 +1,35 @@
+'use client';
+
+import { useEffect } from 'react';
+
+export default function Error({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  useEffect(() => {
+    console.error('Application error:', error);
+  }, [error]);
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+      <div className="text-center max-w-md">
+        <div className="text-6xl mb-4">😵</div>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+          เกิดข้อผิดพลาด
+        </h2>
+        <p className="text-gray-600 dark:text-gray-400 mb-6">
+          มีบางอย่างผิดพลาด กรุณาลองอีกครั้ง
+        </p>
+        <button
+          onClick={reset}
+          className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold hover:opacity-90 transition-opacity"
+        >
+          ลองอีกครั้ง
+        </button>
+      </div>
+    </div>
+  );
+}

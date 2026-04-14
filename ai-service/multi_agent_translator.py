@@ -23,8 +23,8 @@ from datetime import datetime
 # OpenAI
 from openai import AsyncOpenAI
 
-# Google Gemini
-import google.generativeai as genai
+# Google Gemini (new SDK - import removed as not actively used in this module)
+# Note: If Gemini support is needed, use: from google import genai
 
 # Fallback
 from deep_translator import GoogleTranslator

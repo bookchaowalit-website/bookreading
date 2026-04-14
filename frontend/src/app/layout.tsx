@@ -1,8 +1,15 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Inter, Sarabun } from 'next/font/google'
 import '@/styles/globals.css'
+import { ThemeProvider } from '@/providers/ThemeProvider'
+import { ToastProvider } from '@/providers/ToastProvider'
 
 const inter = Inter({ subsets: ['latin'] })
+const sarabun = Sarabun({
+  subsets: ['thai', 'latin'],
+  weight: ['300', '400', '600', '700'],
+  variable: '--font-sarabun',
+})
 
 export const metadata: Metadata = {
   title: 'BookReading - อ่านนิยายแปลอัตโนมัติ',
@@ -15,8 +22,14 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>{children}</body>
+    <html lang="th" suppressHydrationWarning>
+      <body className={`${inter.className} ${sarabun.variable} font-sans`}>
+        <ThemeProvider>
+          <ToastProvider>
+            {children}
+          </ToastProvider>
+        </ThemeProvider>
+      </body>
     </html>
   )
 }

@@ -12,3 +12,6 @@ require (
 	google.golang.org/protobuf v1.32.0
 	github.com/stripe/stripe-go/v74 v74.30.0
 )
+
+// Local replace for build
+replace github.com/bookreading/backend => ./

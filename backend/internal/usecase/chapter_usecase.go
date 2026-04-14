@@ -155,6 +155,28 @@ func (uc *chapterUseCase) extractAndSaveTerminology(ctx context.Context, chapter
 	}
 }
 
+// SaveChapter saves a chapter to the database (used by auto-update)
+func (uc *chapterUseCase) SaveChapter(ctx context.Context, novelID string, chapter *domain.ScrapedChapter) error {
+	// Check if chapter already exists
+	existing, _ := uc.chapterRepo.GetByNovelIDAndNumber(ctx, novelID, chapter.ChapterNumber)
+	if existing != nil {
+		return nil // Chapter already exists, skip
+	}
+
+	newChapter := &domain.Chapter{
+		ID:             uuid.New().String(),
+		NovelID:        novelID,
+		ChapterNumber:  chapter.ChapterNumber,
+		Title:          chapter.Title,
+		OriginalTitle:  chapter.OriginalTitle,
+		URL:            chapter.URL,
+		Content:        chapter.Content,
+		TranslatedContent: "",
+	}
+
+	return uc.chapterRepo.Create(ctx, newChapter)
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a

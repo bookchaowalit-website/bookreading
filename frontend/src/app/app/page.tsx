@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { FEATURED_NOVELS } from '@/lib/novels';
+import { useReadingProgress } from '@/hooks/useReadingProgress';
+import { useNovelSubscriptions } from '@/hooks/useSubscriptions';
 
 interface SavedNovel {
   id: string;
@@ -20,6 +22,11 @@ export default function DashboardPage() {
     totalChapters: 0,
     totalWords: 0,
   });
+  const [apiStats, setApiStats] = useState({ totalProgress: 0, activeSubscriptions: 0 });
+
+  const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') || undefined : undefined;
+  const { progressList } = useReadingProgress(userId);
+  const { subscriptions } = useNovelSubscriptions(userId);
 
   useEffect(() => {
     // Load library from localStorage
@@ -34,6 +41,14 @@ export default function DashboardPage() {
       });
     }
   }, []);
+
+  useEffect(() => {
+    // Update API stats
+    setApiStats({
+      totalProgress: progressList.length,
+      activeSubscriptions: subscriptions.filter(s => s.is_active).length,
+    });
+  }, [progressList, subscriptions]);
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
@@ -88,7 +103,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
           <div className="text-3xl font-bold text-gray-900 dark:text-white">{stats.totalNovels}</div>
           <div className="text-sm text-gray-500 dark:text-gray-400">นิยายในไลบรารี</div>
@@ -102,15 +117,19 @@ export default function DashboardPage() {
           <div className="text-sm text-gray-500 dark:text-gray-400">คำที่แปล</div>
         </div>
         <div className="bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-          <div className="text-3xl font-bold text-gray-900 dark:text-white">∞</div>
-          <div className="text-sm text-gray-500 dark:text-gray-400">การแปลไม่จำกัด</div>
+          <div className="text-3xl font-bold text-gray-900 dark:text-white">{apiStats.totalProgress}</div>
+          <div className="text-sm text-gray-500 dark:text-gray-400">บันทึกความคืบหน้า</div>
+        </div>
+        <div className="bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+          <div className="text-3xl font-bold text-gray-900 dark:text-white">{apiStats.activeSubscriptions}</div>
+          <div className="text-sm text-gray-500 dark:text-gray-400">ติดตามอยู่</div>
         </div>
       </div>
 
       {/* Quick Actions */}
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">การดำเนินการด่วน</h2>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <Link
             href="/app/reader"
             className="group bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-all hover:-translate-y-1"
@@ -140,6 +159,17 @@ export default function DashboardPage() {
             </div>
             <h3 className="font-semibold text-gray-900 dark:text-white">คำศัพท์</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">จัดการคำศัพท์ที่ใช้</p>
+          </Link>
+          {/* New: Subscriptions link */}
+          <Link
+            href="/app/chapters"
+            className="group bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-all hover:-translate-y-1"
+          >
+            <div className="w-12 h-12 bg-gradient-to-br from-teal-500 to-teal-600 rounded-xl flex items-center justify-center text-2xl mb-3 group-hover:scale-110 transition-transform">
+              🔔
+            </div>
+            <h3 className="font-semibold text-gray-900 dark:text-white">ติดตาม</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">จัดการการติดตามนิยาย</p>
           </Link>
           <Link
             href="/app/settings"

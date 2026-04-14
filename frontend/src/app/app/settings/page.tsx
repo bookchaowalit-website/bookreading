@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useToast } from '@/providers/ToastProvider';
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { success, error, warning, info } = useToast();
   const [user, setUser] = useState<{ name: string; email: string } | null>(null);
   const [darkMode, setDarkMode] = useState(false);
   const [defaultFontSize, setDefaultFontSize] = useState('medium');
@@ -18,11 +20,100 @@ export default function SettingsPage() {
   const [defaultGenre, setDefaultGenre] = useState('fantasy');
   const [defaultTone, setDefaultTone] = useState('dark');
 
+  // New: Notification settings
+  const [autoUpdateNotifications, setAutoUpdateNotifications] = useState(true);
+  const [emailNotifications, setEmailNotifications] = useState(false);
+  const [updateCheckInterval, setUpdateCheckInterval] = useState(6);
+
   // API Keys
   const [openaiApiKey, setOpenaiApiKey] = useState('');
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [showOpenaiKey, setShowOpenaiKey] = useState(false);
   const [showGeminiKey, setShowGeminiKey] = useState(false);
+
+  // Load API keys from backend if authenticated
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  useEffect(() => {
+    if (token) {
+      fetch('/api/settings/api-keys', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.data) {
+            data.data.forEach((key: any) => {
+              if (key.provider === 'openai') {
+                setOpenaiKeyLoaded(true);
+                setOpenaiKeyMasked(`${key.key_prefix}...`);
+              }
+              if (key.provider === 'gemini') {
+                setGeminiKeyLoaded(true);
+                setGeminiKeyMasked(`${key.key_prefix}...`);
+              }
+            });
+          }
+        })
+        .catch(() => {
+          // Fall back to localStorage if API fails
+          const settings = localStorage.getItem('appSettings');
+          if (settings) {
+            const parsed = JSON.parse(settings);
+            setOpenaiApiKey(parsed.openaiApiKey || '');
+            setGeminiApiKey(parsed.geminiApiKey || '');
+          }
+        });
+    } else {
+      // No token, load from localStorage
+      const settings = localStorage.getItem('appSettings');
+      if (settings) {
+        const parsed = JSON.parse(settings);
+        setOpenaiApiKey(parsed.openaiApiKey || '');
+        setGeminiApiKey(parsed.geminiApiKey || '');
+      }
+    }
+  }, [token]);
+
+  const [openaiKeyLoaded, setOpenaiKeyLoaded] = useState(false);
+  const [openaiKeyMasked, setOpenaiKeyMasked] = useState('');
+  const [geminiKeyLoaded, setGeminiKeyLoaded] = useState(false);
+  const [geminiKeyMasked, setGeminiKeyMasked] = useState('');
+
+  const handleSaveApiKey = async (provider: 'openai' | 'gemini', key: string) => {
+    if (!token) {
+      // Save to localStorage if not authenticated
+      const settings = JSON.parse(localStorage.getItem('appSettings') || '{}');
+      settings[provider === 'openai' ? 'openaiApiKey' : 'geminiApiKey'] = key;
+      localStorage.setItem('appSettings', JSON.stringify(settings));
+      success(`บันทึก ${provider === 'openai' ? 'OpenAI' : 'Gemini'} API Key แล้ว`);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/settings/api-keys', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ provider, api_key: key }),
+      });
+
+      if (res.ok) {
+        if (provider === 'openai') {
+          setOpenaiKeyLoaded(true);
+          setOpenaiKeyMasked(`${key.substring(0, 8)}...`);
+        } else {
+          setGeminiKeyLoaded(true);
+          setGeminiKeyMasked(`${key.substring(0, 8)}...`);
+        }
+        success(`บันทึก ${provider === 'openai' ? 'OpenAI' : 'Gemini'} API Key บนเซิร์ฟเวอร์แล้ว`);
+      } else {
+        error('ไม่สามารถบันทึก API Key ได้');
+      }
+    } catch (err) {
+      error('เกิดข้อผิดพลาดในการบันทึก API Key');
+    }
+  };
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -48,10 +139,14 @@ export default function SettingsPage() {
       setDefaultTone(parsed.defaultTone || 'dark');
       setOpenaiApiKey(parsed.openaiApiKey || '');
       setGeminiApiKey(parsed.geminiApiKey || '');
+      setAutoUpdateNotifications(parsed.autoUpdateNotifications !== false);
+      setEmailNotifications(parsed.emailNotifications || false);
+      setUpdateCheckInterval(parsed.updateCheckInterval || 6);
     }
   }, []);
 
-  const handleSaveSettings = () => {
+  const handleSaveSettings = async () => {
+    // Save general settings to localStorage
     localStorage.setItem('appSettings', JSON.stringify({
       defaultFontSize,
       defaultViewMode,
@@ -61,10 +156,28 @@ export default function SettingsPage() {
       pronounStyle,
       defaultGenre,
       defaultTone,
-      openaiApiKey,
-      geminiApiKey,
+      autoUpdateNotifications,
+      emailNotifications,
+      updateCheckInterval,
     }));
-    alert('บันทึกการตั้งค่าแล้ว');
+
+    // Save API keys to backend if authenticated
+    if (token) {
+      if (openaiApiKey) {
+        await handleSaveApiKey('openai', openaiApiKey);
+      }
+      if (geminiApiKey) {
+        await handleSaveApiKey('gemini', geminiApiKey);
+      }
+    } else {
+      // Save API keys to localStorage if not authenticated
+      const settings = JSON.parse(localStorage.getItem('appSettings') || '{}');
+      settings.openaiApiKey = openaiApiKey;
+      settings.geminiApiKey = geminiApiKey;
+      localStorage.setItem('appSettings', JSON.stringify(settings));
+    }
+
+    success('บันทึกการตั้งค่าแล้ว');
   };
 
   const handleLogout = () => {
@@ -76,6 +189,7 @@ export default function SettingsPage() {
   const handleDeleteAccount = () => {
     if (confirm('คุณแน่ใจหรือไม่ที่จะลบบัญชี? การกระทำนี้ไม่สามารถย้อนกลับได้')) {
       localStorage.clear();
+      success('ลบบัญชีเรียบร้อยแล้ว');
       router.push('/');
     }
   };
@@ -84,7 +198,7 @@ export default function SettingsPage() {
     if (confirm('คุณแน่ใจหรือไม่ที่จะล้างข้อมูลทั้งหมด?')) {
       localStorage.removeItem('novelLibrary');
       localStorage.removeItem('customTerminology');
-      alert('ล้างข้อมูลแล้ว');
+      success('ล้างข้อมูลแล้ว');
     }
   };
 
@@ -202,16 +316,21 @@ export default function SettingsPage() {
                 type={showOpenaiKey ? 'text' : 'password'}
                 value={openaiApiKey}
                 onChange={(e) => setOpenaiApiKey(e.target.value)}
-                placeholder="sk-..."
-                className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-800 dark:text-white font-mono text-sm"
+                placeholder={openaiKeyLoaded ? openaiKeyMasked : 'sk-...'}
+                className="w-full px-3 py-2 pr-24 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-800 dark:text-white font-mono text-sm"
               />
-              <button
-                type="button"
-                onClick={() => setShowOpenaiKey(!showOpenaiKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-              >
-                {showOpenaiKey ? '🙈' : '👁️'}
-              </button>
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {openaiKeyLoaded && (
+                  <span className="text-xs text-green-600 dark:text-green-400 mr-2">✓ บันทึกแล้ว</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowOpenaiKey(!showOpenaiKey)}
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  {showOpenaiKey ? '🙈' : '👁️'}
+                </button>
+              </div>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               ใช้สำหรับ GPT-4o / GPT-5 models
@@ -238,16 +357,21 @@ export default function SettingsPage() {
                 type={showGeminiKey ? 'text' : 'password'}
                 value={geminiApiKey}
                 onChange={(e) => setGeminiApiKey(e.target.value)}
-                placeholder="AIza..."
-                className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-800 dark:text-white font-mono text-sm"
+                placeholder={geminiKeyLoaded ? geminiKeyMasked : 'AIza...'}
+                className="w-full px-3 py-2 pr-24 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-800 dark:text-white font-mono text-sm"
               />
-              <button
-                type="button"
-                onClick={() => setShowGeminiKey(!showGeminiKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-              >
-                {showGeminiKey ? '🙈' : '👁️'}
-              </button>
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {geminiKeyLoaded && (
+                  <span className="text-xs text-green-600 dark:text-green-400 mr-2">✓ บันทึกแล้ว</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowGeminiKey(!showGeminiKey)}
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  {showGeminiKey ? '🙈' : '👁️'}
+                </button>
+              </div>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               ใช้สำหรับ Gemini 1.5 Pro / Gemini 3.1
@@ -332,6 +456,57 @@ export default function SettingsPage() {
           >
             <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${darkMode ? 'translate-x-6' : 'translate-x-0.5'}`} />
           </button>
+        </div>
+      </div>
+
+      {/* New: Notification Settings */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">🔔 การแจ้งเตือนอัพเดทอัตโนมัติ</h2>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-gray-900 dark:text-white">แจ้งเตือนอัพเดทนิยาย</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">แจ้งเตือนเมื่อนิยายที่ติดตามมีบทใหม่</p>
+            </div>
+            <button
+              onClick={() => setAutoUpdateNotifications(!autoUpdateNotifications)}
+              className={`w-12 h-6 rounded-full transition-colors ${autoUpdateNotifications ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+            >
+              <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${autoUpdateNotifications ? 'translate-x-6' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-gray-900 dark:text-white">แจ้งเตือนทางอีเมล</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">ส่งการแจ้งเตือนไปยังอีเมล (กำลังมาเร็วๆ นี้)</p>
+            </div>
+            <button
+              onClick={() => setEmailNotifications(!emailNotifications)}
+              disabled
+              className={`w-12 h-6 rounded-full transition-colors ${emailNotifications ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'} opacity-50 cursor-not-allowed`}
+            >
+              <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${emailNotifications ? 'translate-x-6' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-600 dark:text-gray-300 mb-2">
+              ความถี่ในการตรวจสอบอัพเดท (ชั่วโมง)
+            </label>
+            <select
+              value={updateCheckInterval}
+              onChange={(e) => setUpdateCheckInterval(Number(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-800 dark:text-white"
+            >
+              <option value={1}>ทุก 1 ชั่วโมง</option>
+              <option value={3}>ทุก 3 ชั่วโมง</option>
+              <option value={6}>ทุก 6 ชั่วโมง</option>
+              <option value={12}>ทุก 12 ชั่วโมง</option>
+              <option value={24}>ทุกวัน</option>
+            </select>
+          </div>
         </div>
       </div>
 

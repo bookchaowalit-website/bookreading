@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import TranslationFeedbackForm from '@/components/TranslationFeedbackForm';
+import StarRating from '@/components/StarRating';
+import { useTranslationFeedback } from '@/hooks/useTranslationFeedback';
 
 interface Term {
   original: string;
@@ -19,6 +22,22 @@ export default function TerminologyPage() {
     type: 'character',
     description: '',
   });
+
+  // New: Terminology quality feedback
+  const [showFeedbackSection, setShowFeedbackSection] = useState(false);
+  const [feedbackNovelId, setFeedbackNovelId] = useState('');
+  const [feedbackChapter, setFeedbackChapter] = useState(1);
+  const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') || undefined : undefined;
+  const { feedbackList, qualityScore, submitFeedback } = useTranslationFeedback(feedbackNovelId, feedbackChapter);
+
+  const handleFeedbackSubmit = async (data: {
+    rating: number;
+    comment?: string;
+    has_errors?: boolean;
+    error_details?: Array<{ type: string; description: string; original_text?: string; corrected_text?: string }>;
+  }) => {
+    return submitFeedback(data);
+  };
 
   useEffect(() => {
     // Load terminology from localStorage
@@ -46,7 +65,7 @@ export default function TerminologyPage() {
 
   const handleAddTerm = () => {
     if (!newTerm.original || !newTerm.translation) return;
-    
+
     const updatedTerms = [...terms, newTerm];
     saveTerms(updatedTerms);
     setNewTerm({ original: '', translation: '', type: 'character', description: '' });
@@ -149,6 +168,96 @@ export default function TerminologyPage() {
                 </div>
               );
             })}
+          </div>
+        )}
+      </div>
+
+      {/* New: Terminology Quality Feedback Section */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <button
+          onClick={() => setShowFeedbackSection(!showFeedbackSection)}
+          className="w-full p-4 text-left flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+        >
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">📊 คุณภาพคำศัพท์และคำแปล</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">ให้คะแนนและแสดงความคิดเห็นเกี่ยวกับคุณภาพการแปล</p>
+          </div>
+          <svg
+            className={`w-5 h-5 text-gray-400 transition-transform ${showFeedbackSection ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {showFeedbackSection && (
+          <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-4">
+            {/* Novel and Chapter Selection */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">
+                  รหัสงานนิยาย (Novel ID)
+                </label>
+                <input
+                  type="text"
+                  value={feedbackNovelId}
+                  onChange={(e) => setFeedbackNovelId(e.target.value)}
+                  placeholder="เช่น novel-123"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-800 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">
+                  บทที่
+                </label>
+                <input
+                  type="number"
+                  value={feedbackChapter}
+                  onChange={(e) => setFeedbackChapter(Number(e.target.value))}
+                  min="1"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-800 dark:text-white"
+                />
+              </div>
+            </div>
+
+            {/* Quality Score Display */}
+            {qualityScore && (
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                <div className="flex items-center gap-3">
+                  <StarRating
+                    rating={Math.round(qualityScore.avg_rating)}
+                    onRate={() => { }}
+                    size="sm"
+                    disabled
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                      คะแนนเฉลี่ย: {qualityScore.avg_rating.toFixed(1)}/5
+                    </p>
+                    <p className="text-xs text-blue-600 dark:text-blue-400">
+                      จาก {qualityScore.feedback_count} คะแนน
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Feedback Form */}
+            {feedbackNovelId && (
+              <TranslationFeedbackForm
+                novelId={feedbackNovelId}
+                chapterNumber={feedbackChapter}
+                onSubmit={handleFeedbackSubmit}
+              />
+            )}
+
+            {!feedbackNovelId && (
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                กรุณาระบุ Novel ID เพื่อเริ่มให้คะแนน
+              </p>
+            )}
           </div>
         )}
       </div>

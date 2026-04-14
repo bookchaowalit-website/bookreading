@@ -4,7 +4,7 @@ services:
     container_name: bookreading-db
     environment:
       POSTGRES_USER: bookreading
-      POSTGRES_PASSWORD: bookreading123
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: bookreading
     ports:
       - "5432:5432"
@@ -13,6 +13,11 @@ services:
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - bookreading-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bookreading"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backend:
     build:
@@ -22,16 +27,24 @@ services:
     ports:
       - "9091:9090"
       - "8888:8080"
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgres://bookreading:bookreading123@postgres:5432/bookreading?sslmode=disable
+      DATABASE_URL: postgres://bookreading:${POSTGRES_PASSWORD}@postgres:5432/bookreading?sslmode=disable
       AI_SERVICE_URL: http://ai-service:8000
-      JWT_SECRET: your-production-jwt-secret-change-this
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       HTTP_PORT: "8080"
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
     depends_on:
-      - postgres
-      - ai-service
+      postgres:
+        condition: service_healthy
     networks:
       - bookreading-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   ai-service:
     build:
@@ -40,40 +53,48 @@ services:
     container_name: bookreading-ai-service
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgres://bookreading:bookreading123@postgres:5432/bookreading?sslmode=disable
-      # LLM Provider Configuration (choose one: openai or gemini)
-      LLM_PROVIDER: openai
-      # OpenAI API Key (for GPT-4o/GPT-5)
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-your-openai-api-key-here}
-      # Google Gemini API Key
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-your-gemini-api-key-here}
-      # Optional: Override default models
-      # OPENAI_MODEL: gpt-4o
-      # GEMINI_MODEL: gemini-1.5-pro
+      DATABASE_URL: postgres://bookreading:${POSTGRES_PASSWORD}@postgres:5432/bookreading?sslmode=disable
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - bookreading-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_AI_SERVICE_URL: http://127.0.0.1:8000
-        NEXT_PUBLIC_BACKEND_URL: http://127.0.0.1:8888
+        NEXT_PUBLIC_AI_SERVICE_URL: http://localhost:8000
+        NEXT_PUBLIC_BACKEND_URL: http://localhost:8888
     container_name: bookreading-frontend
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_AI_SERVICE_URL: http://127.0.0.1:8000
-      NEXT_PUBLIC_BACKEND_URL: http://127.0.0.1:8888
+      NEXT_PUBLIC_AI_SERVICE_URL: http://localhost:8000
+      NEXT_PUBLIC_BACKEND_URL: http://localhost:8888
     depends_on:
       - backend
       - ai-service
     networks:
       - bookreading-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 networks:
   bookreading-network:

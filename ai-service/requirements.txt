@@ -10,4 +10,10 @@ pydantic-settings==2.1.0
 deep-translator==1.11.4
 translatepy==2.3
 openai>=1.0.0
-google-generativeai>=0.3.0
+google-genai>=1.0.0
+# Manga OCR
+easyocr>=1.7.0
+Pillow>=10.0.0
+numpy>=1.24.0
+# Browser automation for protected sites
+playwright>=1.40.0

@@ -4,13 +4,18 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { authApi } from '@/lib/api';
+import { useToast } from '@/providers/ToastProvider';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { success, error: showError } = useToast();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -18,13 +23,25 @@ export default function RegisterPage() {
     e.preventDefault();
     setError('');
 
+    if (!name || !email || !password || !confirmPassword) {
+      showError('กรุณากรอกข้อมูลให้ครบถ้วน');
+      return;
+    }
+
     if (password !== confirmPassword) {
+      showError('รหัสผ่านไม่ตรงกัน');
       setError('รหัสผ่านไม่ตรงกัน');
       return;
     }
 
     if (password.length < 6) {
+      showError('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
       setError('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
+      return;
+    }
+
+    if (!acceptTerms) {
+      showError('กรุณายอมรับข้อกำหนดการใช้งาน');
       return;
     }
 
@@ -35,18 +52,19 @@ export default function RegisterPage() {
       localStorage.setItem('isLoggedIn', 'true');
       localStorage.setItem('token', result.token);
       localStorage.setItem('user', JSON.stringify(result.user));
+      success('สมัครสมาชิกสำเร็จ! ยินดีต้อนรับ ' + name);
       router.push('/app');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Registration failed. Please try again.');
+      const message = err.response?.data?.error || 'Registration failed. Please try again.';
+      setError(message);
+      showError(message);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleGoogleRegister = () => {
-    localStorage.setItem('isLoggedIn', 'true');
-    localStorage.setItem('user', JSON.stringify({ email: 'user@gmail.com', name: 'User' }));
-    router.push('/app');
+    showError('ระบบสมัครด้วย Google ยังไม่เปิดใช้งาน กรุณาใช้อีเมลและรหัสผ่าน');
   };
 
   return (
@@ -108,30 +126,81 @@ export default function RegisterPage() {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 รหัสผ่าน
               </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                placeholder="อย่างน้อย 6 ตัวอักษร"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-4 py-3 pr-12 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  placeholder="อย่างน้อย 6 ตัวอักษร"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                >
+                  {showPassword ? '🙈' : '👁️'}
+                </button>
+              </div>
+              {/* Password strength indicator */}
+              {password && (
+                <div className="mt-2">
+                  <div className="flex gap-1 mb-1">
+                    {[1, 2, 3, 4].map(level => (
+                      <div
+                        key={level}
+                        className={`h-1 flex-1 rounded-full transition-colors ${password.length >= level * 3
+                            ? level <= 1 ? 'bg-red-500'
+                              : level <= 2 ? 'bg-yellow-500'
+                                : level <= 3 ? 'bg-blue-500'
+                                  : 'bg-green-500'
+                            : 'bg-gray-200 dark:bg-gray-700'
+                          }`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {password.length < 6 ? '❌ สั้นเกินไป' :
+                      password.length < 9 ? '⚠️ อ่อน' :
+                        password.length < 12 ? '✓ ปานกลาง' :
+                          '✓✓ แข็งแรง'}
+                  </p>
+                </div>
+              )}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 ยืนยันรหัสผ่าน
               </label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                placeholder="กรอกรหัสผ่านอีกครั้ง"
-              />
+              <div className="relative">
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full px-4 py-3 pr-12 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  placeholder="กรอกรหัสผ่านอีกครั้ง"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  aria-label={showConfirmPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                >
+                  {showConfirmPassword ? '🙈' : '👁️'}
+                </button>
+              </div>
             </div>
 
             <div className="flex items-start gap-2">
-              <input type="checkbox" className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500" required />
+              <input
+                type="checkbox"
+                className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                checked={acceptTerms}
+                onChange={(e) => setAcceptTerms(e.target.checked)}
+                required
+              />
               <span className="text-sm text-gray-600 dark:text-gray-400">
                 ฉันยอมรับ{' '}
                 <a href="#" className="text-blue-600 hover:underline">ข้อกำหนดการใช้งาน</a>

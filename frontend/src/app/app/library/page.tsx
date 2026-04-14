@@ -3,6 +3,13 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { FEATURED_NOVELS } from '@/lib/novels';
+import ResumeReadingButton from '@/components/ResumeReadingButton';
+import Skeleton from '@/components/Skeleton';
+import { useReadingProgress } from '@/hooks/useReadingProgress';
+import type { ReadingProgress } from '@/lib/types/features';
+import { offlineStorage } from '@/lib/offline-storage';
+import { epubGenerator } from '@/lib/epub-generator';
+import { useToast } from '@/providers/ToastProvider';
 
 interface SavedNovel {
   id: string;
@@ -21,9 +28,32 @@ interface SavedNovel {
 }
 
 export default function LibraryPage() {
+  const { success, error: showError, info, warning } = useToast();
+  const [hydrated, setHydrated] = useState(false);
   const [library, setLibrary] = useState<SavedNovel[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'recent' | 'title' | 'progress'>('recent');
+  const [apiProgressMap, setApiProgressMap] = useState<Record<string, ReadingProgress | null>>({});
+  const [downloadingNovel, setDownloadingNovel] = useState<string | null>(null);
+
+  const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') || undefined : undefined;
+  const { progressList, getProgressForNovel } = useReadingProgress(userId);
+
+  // Mark as hydrated to avoid SSR/CSR mismatch
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    // Build progress map from API
+    if (progressList.length > 0) {
+      const map: Record<string, ReadingProgress | null> = {};
+      progressList.forEach(p => {
+        map[p.novel_id] = p;
+      });
+      setApiProgressMap(map);
+    }
+  }, [progressList]);
 
   useEffect(() => {
     const savedLibrary = localStorage.getItem('novelLibrary');
@@ -49,10 +79,78 @@ export default function LibraryPage() {
     localStorage.setItem('novelLibrary', JSON.stringify(newLibrary));
   };
 
+  // Download for offline reading
+  const downloadForOffline = async (novel: SavedNovel) => {
+    setDownloadingNovel(novel.id);
+    info('กำลังดาวน์โหลดสำหรับอ่านออฟไลน์...');
+
+    try {
+      // Save chapter to IndexedDB (in real app, fetch all chapters)
+      await offlineStorage.saveChapter({
+        novelId: novel.novelId || novel.id,
+        chapterNumber: novel.chapterNumber || 1,
+        title: novel.title,
+        originalTitle: novel.originalTitle || novel.title,
+        content: novel.content || '',
+        translatedContent: novel.translatedContent || '',
+        downloadedAt: Date.now(),
+        size: (novel.content?.length || 0) + (novel.translatedContent?.length || 0),
+      });
+
+      success('ดาวน์โหลดสำหรับอ่านออฟไลน์เรียบร้อย!');
+    } catch (err: any) {
+      showError('เกิดข้อผิดพลาดในการดาวน์โหลด');
+    } finally {
+      setDownloadingNovel(null);
+    }
+  };
+
+  // Export as EPUB
+  const exportAsEpub = async (novel: SavedNovel) => {
+    info('กำลังสร้าง EPUB...');
+
+    try {
+      await epubGenerator.downloadEpub(
+        {
+          title: novel.title,
+          author: novel.author || 'ไม่ทราบผู้แต่ง',
+          description: novel.content?.substring(0, 200) || '',
+          language: 'th',
+        },
+        [{
+          chapterNumber: novel.chapterNumber || 1,
+          title: novel.title,
+          originalTitle: novel.originalTitle || novel.title,
+          content: novel.content || '',
+          translatedContent: novel.translatedContent || '',
+        }],
+        `${novel.title.replace(/[^a-zA-Z0-9ก-๙]/g, '_')}.epub`,
+        { includeTranslated: true }
+      );
+
+      success('ดาวน์โหลด EPUB เรียบร้อย!');
+    } catch (err: any) {
+      showError(`สร้าง EPUB ล้มเหลว: ${err.message}`);
+    }
+  };
+
   const filteredLibrary = library.filter(novel =>
     novel.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     novel.author.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Show skeleton during hydration
+  if (!hydrated) {
+    return (
+      <div className="max-w-6xl mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <Skeleton variant="title" className="w-48" />
+          <Skeleton variant="card" className="w-32 h-10" />
+        </div>
+        <Skeleton count={3} variant="card" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -140,62 +238,85 @@ export default function LibraryPage() {
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredLibrary.map(novel => (
-            <div
-              key={novel.id}
-              className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-shadow"
-            >
-              <div className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 dark:text-white truncate">
-                      {novel.title}
-                    </h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                      {novel.author || 'ไม่ทราบผู้แต่ง'}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => deleteFromLibrary(novel.id)}
-                    className="p-2 text-gray-400 hover:text-red-500 transition-colors"
-                  >
-                    🗑️
-                  </button>
-                </div>
+          {filteredLibrary.map(novel => {
+            const apiProgress = apiProgressMap[novel.novelId || novel.id] || null;
+            const displayProgress = apiProgress || {
+              chapter_number: novel.chapterNumber,
+              progress_percentage: novel.readingProgress || 0,
+              novel_id: novel.novelId || novel.id,
+            };
 
-                <div className="mt-3 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                  <span>บท {novel.chapterNumber}</span>
-                  <span>•</span>
-                  <span>{novel.terminology?.length || 0} คำศัพท์</span>
-                </div>
-
-                {/* Progress bar */}
-                <div className="mt-3">
-                  <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    <span>ความคืบหน้า</span>
-                    <span>{novel.readingProgress || 0}%</span>
+            return (
+              <div
+                key={novel.id}
+                className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-shadow"
+              >
+                <div className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-900 dark:text-white truncate">
+                        {novel.title}
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                        {novel.author || 'ไม่ทราบผู้แต่ง'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => deleteFromLibrary(novel.id)}
+                      className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                    >
+                      🗑️
+                    </button>
                   </div>
-                  <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-blue-500 to-purple-500"
-                      style={{ width: `${novel.readingProgress || 0}%` }}
+
+                  <div className="mt-3 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                    <span>บท {novel.chapterNumber}</span>
+                    <span>•</span>
+                    <span>{novel.terminology?.length || 0} คำศัพท์</span>
+                  </div>
+
+                  {/* Progress bar - sync from API */}
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                      <span>ความคืบหน้า</span>
+                      <span>{apiProgress?.progress_percentage || novel.readingProgress || 0}%</span>
+                    </div>
+                    <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-blue-500 to-purple-500"
+                        style={{ width: `${apiProgress?.progress_percentage || novel.readingProgress || 0}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+                    อ่านล่าสุด: {new Date(novel.lastReadAt).toLocaleDateString('th-TH')}
+                  </div>
+
+                  {/* New: Resume Reading Button */}
+                  <div className="mt-3">
+                    <ResumeReadingButton
+                      novelId={novel.novelId || novel.id}
+                      progress={apiProgress}
+                      bookmarks={[]}
+                      onNavigate={(chapterNumber) => {
+                        window.location.href = `/app/reader?novel=${novel.novelId || novel.id}&chapter=${chapterNumber}`;
+                      }}
                     />
                   </div>
-                </div>
 
-                <div className="mt-3 text-xs text-gray-400 dark:text-gray-500">
-                  อ่านล่าสุด: {new Date(novel.lastReadAt).toLocaleDateString('th-TH')}
+                  {!apiProgress && (
+                    <Link
+                      href={`/app/reader?novel=${novel.novelId || novel.id}&chapter=${novel.chapterNumber}`}
+                      className="mt-2 block w-full py-2 text-center bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors text-sm font-medium"
+                    >
+                      เปิดอ่าน
+                    </Link>
+                  )}
                 </div>
-
-                <Link
-                  href={`/app/reader?novel=${novel.novelId || novel.id}&chapter=${novel.chapterNumber}`}
-                  className="mt-4 block w-full py-2 text-center bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors text-sm font-medium"
-                >
-                  เปิดอ่าน
-                </Link>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

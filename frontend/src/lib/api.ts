@@ -445,6 +445,236 @@ export const aiApi = {
   },
 };
 
+// Manga Translation API
+export interface MangaTextRegion {
+  bbox: number[];
+  original_text: string;
+  translated_text: string;
+  confidence: number;
+  region_type: string;
+  font_size: number;
+  is_vertical: boolean;
+}
+
+export interface MangaTranslateResponse {
+  translated_image_base64: string;
+  original_image_base64: string;
+  regions: MangaTextRegion[];
+  model_used: string;
+  provider: string;
+  tokens_used: number;
+}
+
+export interface MangaExtractTextResponse {
+  regions: MangaTextRegion[];
+  extracted_text: string;
+}
+
+export interface MangaBatchTranslateResponse {
+  results: MangaTranslateResponse[];
+  total_pages: number;
+  successful_pages: number;
+  total_tokens_used: number;
+}
+
+export interface SupportedLanguage {
+  code: string;
+  name: string;
+  description: string;
+}
+
+export interface SupportedRenderStyle {
+  code: string;
+  name: string;
+  description: string;
+}
+
+export const mangaApi = {
+  // Translate single manga image
+  async translateImage(
+    imageBase64: string,
+    options: {
+      sourceLang?: string;
+      targetLang?: string;
+      renderStyle?: string;
+      seriesTitle?: string;
+      chapterNumber?: number;
+      characters?: { name: string; personality: string }[];
+      tone?: string;
+      setting?: string;
+      provider?: 'openai' | 'gemini';
+      model?: string;
+      openaiApiKey?: string;
+      geminiApiKey?: string;
+    } = {}
+  ): Promise<MangaTranslateResponse> {
+    const response = await axios.post(`${AI_SERVICE_URL}/manga/translate`, {
+      image_base64: imageBase64,
+      source_lang: options.sourceLang || 'ko',
+      target_lang: options.targetLang || 'th',
+      render_style: options.renderStyle || 'overlay',
+      series_title: options.seriesTitle || '',
+      chapter_number: options.chapterNumber || 0,
+      characters: options.characters || [],
+      tone: options.tone || 'casual',
+      setting: options.setting || '',
+      provider: options.provider,
+      model: options.model || 'gpt-4o',
+      openai_api_key: options.openaiApiKey,
+      gemini_api_key: options.geminiApiKey,
+    });
+    return response.data;
+  },
+
+  // Extract text only (no translation)
+  async extractText(
+    imageBase64: string,
+    sourceLang: string = 'ko'
+  ): Promise<MangaExtractTextResponse> {
+    const response = await axios.post(`${AI_SERVICE_URL}/manga/extract-text`, {
+      image_base64: imageBase64,
+      source_lang: sourceLang,
+    });
+    return response.data;
+  },
+
+  // Batch translate multiple images
+  async batchTranslate(
+    images: string[],
+    options: {
+      sourceLang?: string;
+      targetLang?: string;
+      renderStyle?: string;
+      seriesTitle?: string;
+      chapterStart?: number;
+      characters?: { name: string; personality: string }[];
+      tone?: string;
+      setting?: string;
+      provider?: 'openai' | 'gemini';
+      model?: string;
+      openaiApiKey?: string;
+      geminiApiKey?: string;
+    } = {}
+  ): Promise<MangaBatchTranslateResponse> {
+    const response = await axios.post(`${AI_SERVICE_URL}/manga/batch-translate`, {
+      images,
+      source_lang: options.sourceLang || 'ko',
+      target_lang: options.targetLang || 'th',
+      render_style: options.renderStyle || 'overlay',
+      series_title: options.seriesTitle || '',
+      chapter_start: options.chapterStart || 1,
+      characters: options.characters || [],
+      tone: options.tone || 'casual',
+      setting: options.setting || '',
+      provider: options.provider,
+      model: options.model || 'gpt-4o',
+      openai_api_key: options.openaiApiKey,
+      gemini_api_key: options.geminiApiKey,
+    });
+    return response.data;
+  },
+
+  // Fetch manga from URL
+  async fetchFromUrl(
+    url: string,
+    sourceLang: string = 'ko'
+  ): Promise<{
+    title: string;
+    chapter_number: number | null;
+    total_pages: number;
+    pages: { page_number: number; image_url: string }[];
+    source_url: string;
+    site_name: string;
+  }> {
+    const response = await axios.post(`${AI_SERVICE_URL}/manga/fetch`, {
+      url,
+      source_lang: sourceLang,
+    });
+    return response.data;
+  },
+
+  // Translate manga from URL (fetch + translate)
+  async translateFromUrl(
+    url: string,
+    options: {
+      sourceLang?: string;
+      renderStyle?: string;
+      seriesTitle?: string;
+      tone?: string;
+      provider?: 'openai' | 'gemini';
+      model?: string;
+      openaiApiKey?: string;
+      geminiApiKey?: string;
+    } = {}
+  ): Promise<{
+    title: string;
+    chapter_number: number | null;
+    total_pages: number;
+    site_name: string;
+    source_url: string;
+    pages: {
+      page_number: number;
+      translated_base64: string;
+      original_base64: string;
+      regions_count: number;
+      error?: string;
+    }[];
+  }> {
+    const response = await axios.post(`${AI_SERVICE_URL}/manga/translate-url`, {
+      url,
+      source_lang: options.sourceLang || 'ko',
+      render_style: options.renderStyle || 'overlay',
+      series_title: options.seriesTitle || '',
+      tone: options.tone || 'casual',
+      provider: options.provider,
+      model: options.model || 'gpt-4o',
+      openai_api_key: options.openaiApiKey,
+      gemini_api_key: options.geminiApiKey,
+    });
+    return response.data;
+  },
+
+  // Get supported languages
+  async getSupportedLanguages(): Promise<{
+    languages: SupportedLanguage[];
+    target_languages: SupportedLanguage[];
+    render_styles: SupportedRenderStyle[];
+  }> {
+    const response = await axios.get(`${AI_SERVICE_URL}/manga/supported-languages`);
+    return response.data;
+  },
+
+  // Get supported sites
+  async getSupportedSites(): Promise<{
+    sites: {
+      name: string;
+      domains: string[];
+      example: string;
+      notes: string;
+    }[];
+  }> {
+    const response = await axios.get(`${AI_SERVICE_URL}/manga/supported-sites`);
+    return response.data;
+  },
+
+  // Health check
+  async healthCheck(): Promise<{
+    status: string;
+    ocr_available: boolean;
+    openai_configured: boolean;
+    gemini_configured: boolean;
+    supported_features: {
+      ocr: boolean;
+      translation: boolean;
+      rendering: boolean;
+      batch: boolean;
+    };
+  }> {
+    const response = await axios.get(`${AI_SERVICE_URL}/manga/health`);
+    return response.data;
+  },
+};
+
 // Legacy API for backward compatibility
 export const api = {
   async scrapeNovel(url: string, sourceLang = 'zh', targetLang = 'th'): Promise<ScrapeResponse> {

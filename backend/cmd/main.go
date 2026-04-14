@@ -13,8 +13,7 @@ import (
 	"github.com/bookreading/backend/internal/delivery/grpc/pb"
 	httpServer "github.com/bookreading/backend/internal/delivery/http"
 	"github.com/bookreading/backend/internal/domain"
-	"github.com/bookreading/backend/internal/infrastructure/aiservice"
-	postgresRepo "github.com/bookreading/backend/internal/repository/postgres"
+	"github.com/bookreading/backend/internal/scheduler"
 	usecaseImpl "github.com/bookreading/backend/internal/usecase"
 
 	_ "github.com/lib/pq"
@@ -27,11 +26,6 @@ func main() {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
 		databaseURL = "postgres://bookreading:bookreading123@localhost:5432/bookreading?sslmode=disable"
-	}
-
-	aiServiceURL := os.Getenv("AI_SERVICE_URL")
-	if aiServiceURL == "" {
-		aiServiceURL = "http://localhost:8000"
 	}
 
 	httpPort := os.Getenv("HTTP_PORT")
@@ -52,21 +46,16 @@ func main() {
 
 	log.Println("Connected to database successfully")
 
-	// Initialize repositories
-	var novelRepo domain.NovelRepository = postgresRepo.NewNovelRepository(db)
-	var chapterRepo domain.ChapterRepository = postgresRepo.NewChapterRepository(db)
-	var terminologyRepo domain.TerminologyRepository = postgresRepo.NewTerminologyRepository(db)
+	// Create shared dependencies (single source of truth)
+	deps := httpServer.NewServerDependencies(db)
 
-	// Initialize AI service client
-	aiClient := aiservice.NewAIServiceClient(aiServiceURL)
+	// Initialize use cases for gRPC (using same repositories from deps)
+	var novelUseCase domain.NovelUseCase = deps.NovelUsecase
+	var chapterUseCase domain.ChapterUseCase = deps.ChapterUsecase
+	var terminologyUseCase domain.TerminologyUseCase = usecaseImpl.NewTerminologyUseCase(deps.TerminologyRepo, deps.NovelRepo)
 
-	// Initialize use cases
-	var novelUseCase domain.NovelUseCase = usecaseImpl.NewNovelUseCase(novelRepo, chapterRepo, terminologyRepo, aiClient)
-	var chapterUseCase domain.ChapterUseCase = usecaseImpl.NewChapterUseCase(chapterRepo, terminologyRepo, nil, aiClient)
-	var terminologyUseCase domain.TerminologyUseCase = usecaseImpl.NewTerminologyUseCase(terminologyRepo, novelRepo)
-
-	// Start HTTP server
-	httpSrv := httpServer.NewServer(db, httpPort)
+	// Start HTTP server with shared dependencies
+	httpSrv := httpServer.NewServerWithDeps(deps, httpPort)
 	go func() {
 		if err := httpSrv.Start(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("HTTP server error: %v", err)
@@ -74,8 +63,14 @@ func main() {
 	}()
 	log.Printf("HTTP server started on :%s", httpPort)
 
-	// Create gRPC server
-	grpcServer := grpcHandler.NewBookReadingServer(novelUseCase, chapterUseCase, terminologyUseCase)
+	// Start novel update scheduler
+	updateIntervalMinutes := 60 // Check every hour
+	novelScheduler := scheduler.NewNovelUpdateScheduler(deps.NovelUpdateUseCase, updateIntervalMinutes)
+	novelScheduler.Start()
+	defer novelScheduler.Stop()
+
+	// Create gRPC server with SAME dependencies
+	grpcHandler := grpcHandler.NewBookReadingServer(novelUseCase, chapterUseCase, terminologyUseCase)
 
 	// Start gRPC server
 	lis, err := net.Listen("tcp", ":9090")
@@ -84,7 +79,7 @@ func main() {
 	}
 
 	grpcServerImpl := grpc.NewServer()
-	pb.RegisterBookReadingServiceServer(grpcServerImpl, grpcServer)
+	pb.RegisterBookReadingServiceServer(grpcServerImpl, grpcHandler)
 
 	go func() {
 		log.Println("Starting gRPC server on :9090")

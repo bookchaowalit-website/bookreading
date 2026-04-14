@@ -4,11 +4,14 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { authApi } from '@/lib/api';
+import { useToast } from '@/providers/ToastProvider';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { success, error: showError } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -17,24 +20,30 @@ export default function LoginPage() {
     setError('');
     setIsLoading(true);
 
+    if (!email || !password) {
+      showError('กรุณากรอกอีเมลและรหัสผ่าน');
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const result = await authApi.login(email, password);
       localStorage.setItem('isLoggedIn', 'true');
       localStorage.setItem('token', result.token);
       localStorage.setItem('user', JSON.stringify(result.user));
+      success('เข้าสู่ระบบสำเร็จ!');
       router.push('/app');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Login failed. Please try again.');
+      const message = err.response?.data?.error || 'Login failed. Please try again.';
+      setError(message);
+      showError(message);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleGoogleLogin = () => {
-    // Simulate Google login for demo
-    localStorage.setItem('isLoggedIn', 'true');
-    localStorage.setItem('user', JSON.stringify({ email: 'user@gmail.com', name: 'User' }));
-    router.push('/app');
+    showError('ระบบ login ด้วย Google ยังไม่เปิดใช้งาน กรุณาใช้อีเมลและรหัสผ่าน');
   };
 
   return (
@@ -83,13 +92,23 @@ export default function LoginPage() {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 รหัสผ่าน
               </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                placeholder="••••••••"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-4 py-3 pr-12 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                >
+                  {showPassword ? '🙈' : '👁️'}
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center justify-between">

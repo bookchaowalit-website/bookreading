@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { novelApi, chapterApi, aiApi, Chapter, Novel } from '@/lib/api';
 import { FEATURED_NOVELS, getNovelById, FeaturedNovel } from '@/lib/novels';
+import SubscribeButton from '@/components/SubscribeButton';
+import { useNovelSubscriptions, useNovelSubscriptionStatus } from '@/hooks/useSubscriptions';
 
 interface ChapterWithStatus extends Chapter {
   is_loaded: boolean;
@@ -26,6 +28,11 @@ export default function ChaptersPage() {
   const [jumpToPage, setJumpToPage] = useState('');
   const [jumpToChapter, setJumpToChapter] = useState('');
   const chaptersPerPage = 50;
+
+  // New: Subscription hooks
+  const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') || undefined : undefined;
+  const { subscribe, unsubscribe } = useNovelSubscriptions(userId);
+  const { isSubscribed, subscription, loading: subLoading } = useNovelSubscriptionStatus(novelIdParam || '', userId);
 
   useEffect(() => {
     if (novelIdParam) {
@@ -65,10 +72,14 @@ export default function ChaptersPage() {
 
       // If not in database, scrape from source
       setIsScraping(true);
-      const scrapeResult = await aiApi.scrapeNovel(featuredNovel.chapterListUrl, 'zh');
+
+      // Auto-detect source language (Korean vs Chinese)
+      const sourceLang = featuredNovel.sourceType === 'korean' ? 'ko' : 'zh';
+
+      const scrapeResult = await aiApi.scrapeNovel(featuredNovel.chapterListUrl, sourceLang);
 
       // Save to database via backend
-      const saveResult = await novelApi.scrapeNovel(featuredNovel.chapterListUrl, 'zh', 'th', novelId);
+      const saveResult = await novelApi.scrapeNovel(featuredNovel.chapterListUrl, sourceLang, 'th', novelId);
 
       // Now load chapters from database
       const { chapters: dbChapters, total } = await chapterApi.listChapters(saveResult.novel_id, chaptersPerPage, 0);
@@ -270,16 +281,32 @@ export default function ChaptersPage() {
                   {totalChapters} บท • {displayStatus === 'ongoing' ? 'กำลังเขียน' : 'จบ'}
                 </p>
               </div>
-              <button
-                onClick={() => {
-                  setSelectedNovel(null);
-                  setChapters([]);
-                  setNovelFromDb(null);
-                }}
-                className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
-              >
-                เปลี่ยนนิยาย
-              </button>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => {
+                    setSelectedNovel(null);
+                    setChapters([]);
+                    setNovelFromDb(null);
+                  }}
+                  className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  เปลี่ยนนิยาย
+                </button>
+                {/* New: Subscribe Button */}
+                {novelIdParam && selectedNovel && (
+                  <div className="w-48">
+                    <SubscribeButton
+                      novelId={novelIdParam}
+                      sourceUrl={selectedNovel.chapterListUrl}
+                      sourceType="novel"
+                      isSubscribed={isSubscribed}
+                      onSubscribe={subscribe}
+                      onUnsubscribe={unsubscribe}
+                      subscriptionId={subscription?.id}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

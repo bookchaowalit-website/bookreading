@@ -1,14 +1,43 @@
-# BookReading Platform
+# 📚 BookReading Platform
 
 A multilingual novel/manga reading platform with AI-powered translation (Chinese → Thai by default).
 
-## Architecture
+## ✨ Features
+
+### 📖 Novel Reading
+- **Auto Scraping** - Scrape novels from Chinese websites (piaotia, qidian, etc.)
+- **AI Translation** - Translate chapters using OpenAI/Gemini with terminology consistency
+- **Auto-Update** - Automatically check for new chapters and download them
+- **Reading Progress** - Track your progress, auto-saves every 30 seconds
+- **Bookmarks** - Save important moments with notes
+- **Keyboard Navigation** - Arrow keys to change chapters, Ctrl+T/F for settings
+
+### 🎨 Manga Reading
+- **Manga Translation** - Upload manga/mahwa and get translated versions
+- **Multiple View Modes** - Webtoon, page-by-page, horizontal scrolling
+- **Cross-Page Sync** - Translate in manga page, read in manga reader
+
+### 🔧 User Experience
+- **Dark Mode** - Toggle with persistence
+- **Toast Notifications** - Non-blocking, beautiful notifications
+- **Loading Skeletons** - Smooth loading states everywhere
+- **Error Boundaries** - Graceful error handling with recovery
+
+### 🔒 Security
+- **JWT Authentication** - Secure user sessions
+- **Server-Side API Keys** - API keys stored on backend, not localStorage
+- **Rate Limiting** - 100 req/min (API), 10 req/min (Translation), 5 req/min (Auth)
+- **CORS Protection** - Configurable allowed origins
+
+---
+
+## 🏗️ Architecture
 
 ```
 ┌─────────────┐      gRPC      ┌─────────────┐      HTTP     ┌─────────────┐
 │  Frontend   │ ◄───────────► │  Backend    │ ◄───────────► │ AI Service  │
 │   Next.js   │               │    (Go)     │               │  (FastAPI)  │
-│   :3000     │               │   :9090     │               │   :8000     │
+│   :3000     │               │ :8080/:9090 │               │   :8000     │
 └─────────────┘               └──────┬──────┘               └─────────────┘
                                      │
                               ┌──────▼──────┐
@@ -17,240 +46,279 @@ A multilingual novel/manga reading platform with AI-powered translation (Chinese
                               └─────────────┘
 ```
 
-## Tech Stack
+### Tech Stack
+| Component | Technology |
+|-----------|------------|
+| **Frontend** | Next.js 14, TypeScript, TailwindCSS |
+| **Backend** | Go (Hexagonal Architecture), gRPC |
+| **AI Service** | Python FastAPI, BeautifulSoup |
+| **Database** | PostgreSQL 15 |
 
-- **Frontend**: Next.js 14, TypeScript, TailwindCSS
-- **Backend**: Go (Golang) with Hexagonal Architecture, gRPC
-- **AI Service**: Python FastAPI, BeautifulSoup (scraping)
-- **Database**: PostgreSQL 15
+---
 
-## Features
-
-1. **Web Scraping**: Automatically scrape novels from supported sources (piaotia.com)
-2. **AI Translation**: Translate content from Chinese to Thai with terminology consistency
-3. **Terminology Management**: Maintain consistent character names and terms across chapters
-4. **Translation Memory**: Store translation history for better context in future chapters
-5. **Reading Interface**: Clean, responsive UI for reading translated content
-
-## Quick Start
-
-### Prerequisites
-
-- Docker & Docker Compose
-- Node.js 20+ (for local frontend development)
-- Go 1.21+ (for local backend development)
-- Python 3.11+ (for local AI service development)
+## 🚀 Quick Start
 
 ### Using Docker (Recommended)
 
 ```bash
-# Start all services
+# 1. Clone repository
+git clone <your-repo-url>
+cd bookreading
+
+# 2. Configure environment
+cp .env.template .env
+# Edit .env with your secrets (see Configuration section)
+
+# 3. Validate secrets
+chmod +x scripts/validate-secrets.sh
+./scripts/validate-secrets.sh
+
+# 4. Run database migrations
+make migrate-up
+
+# 5. Start all services
 docker-compose up -d
 
-# View logs
-docker-compose logs -f
+# 6. Open in browser
+open http://localhost:3000
+```
 
-# Stop all services
+### View Services
+```bash
+docker-compose ps
+```
+
+### View Logs
+```bash
+docker-compose logs -f
+docker-compose logs -f backend
+docker-compose logs -f ai-service
+```
+
+### Stop Services
+```bash
 docker-compose down
 ```
 
-Access the application:
-- Frontend: http://localhost:3000
-- Backend gRPC: localhost:9090
-- AI Service API: http://localhost:8000
-- PostgreSQL: localhost:5432
+---
 
-### Local Development
+## ⚙️ Configuration
 
-#### 1. Database
+### Environment Variables (.env)
 
-```bash
-docker run -d --name bookreading-db \
-  -e POSTGRES_USER=bookreading \
-  -e POSTGRES_PASSWORD=bookreading123 \
-  -e POSTGRES_DB=bookreading \
-  -p 5432:5432 \
-  postgres:15-alpine
+```env
+# PostgreSQL Password (REQUIRED - change from default!)
+POSTGRES_PASSWORD=<generate-with: openssl rand -base64 32>
+
+# JWT Secret (REQUIRED - change from default!)
+JWT_SECRET=<generate-with: openssl rand -hex 32>
+
+# CORS (your domain)
+ALLOWED_ORIGINS=http://localhost:3000
+
+# LLM API Keys
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-your-key-here
+GEMINI_API_KEY=your-gemini-key
 ```
 
-#### 2. Backend (Go)
+### Generate Secure Secrets
 
 ```bash
-cd backend
+# PostgreSQL password
+openssl rand -base64 32
 
-# Install dependencies
-go mod download
-
-# Generate protobuf code (requires protoc)
-protoc --go_out=. --go_opt=paths=source_relative \
-    --go-grpc_out=. --go-grpc_opt=paths=source_relative \
-    proto/bookreading.proto
-
-# Run
-DATABASE_URL="postgres://bookreading:bookreading123@localhost:5432/bookreading?sslmode=disable" \
-AI_SERVICE_URL="http://localhost:8000" \
-go run cmd/main.go
+# JWT secret (64 characters)
+openssl rand -hex 32
 ```
 
-#### 3. AI Service (Python)
+---
 
-```bash
-cd ai-service
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # or `venv\Scripts\activate` on Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
-
-#### 4. Frontend (Next.js)
-
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Run development server
-npm run dev
-```
-
-## Project Structure
+## 📁 Project Structure
 
 ```
 bookreading/
-├── backend/
-│   ├── cmd/
-│   │   └── main.go              # Application entry point
+├── ai-service/                 # Python FastAPI - Translation & Scraping
+│   ├── main.py                 # Main application
+│   ├── scrapers.py             # Web scraping logic
+│   ├── terminology.py           # Terminology management
+│   ├── agentic_translator.py   # LLM-based translation
+│   ├── manga_translator.py     # Manga OCR & translation
+│   └── Dockerfile
+├── backend/                    # Go - REST + gRPC API
+│   ├── cmd/main.go             # Entry point
 │   ├── internal/
-│   │   ├── delivery/grpc/       # gRPC handlers
-│   │   ├── domain/              # Domain models & interfaces
-│   │   ├── repository/postgres/ # Data access layer
-│   │   ├── usecase/             # Business logic
-│   │   └── infrastructure/      # External services (AI client)
-│   ├── proto/                   # Protocol Buffer definitions
-│   └── go.mod
-├── ai-service/
-│   ├── main.py                  # FastAPI application
-│   ├── scrapers/                # Web scrapers
-│   ├── translators/             # Translation logic
-│   └── requirements.txt
-├── frontend/
+│   │   ├── delivery/http/      # HTTP handlers
+│   │   ├── delivery/grpc/      # gRPC handlers
+│   │   ├── usecase/            # Business logic
+│   │   ├── repository/         # Data access
+│   │   ├── domain/             # Domain models
+│   │   ├── middleware/          # Rate limiting, logging
+│   │   └── logging/            # Structured logging
+│   └── Dockerfile
+├── frontend/                   # Next.js 14 - React/TypeScript
 │   ├── src/
-│   │   ├── app/                 # Next.js pages
-│   │   ├── lib/                 # API client
-│   │   └── styles/              # CSS styles
-│   └── package.json
+│   │   ├── app/                # Pages
+│   │   ├── components/         # Reusable UI
+│   │   ├── hooks/              # React hooks
+│   │   ├── lib/                # API clients, types
+│   │   └── providers/          # Theme, Toast providers
+│   └── Dockerfile
 ├── database/
-│   └── init.sql                 # Database schema
-└── docker-compose.yml
+│   ├── migrations/             # Versioned migrations
+│   └── init.sql                # Legacy init (deprecated)
+├── docs/                       # API documentation
+├── scripts/                    # Utility scripts
+├── docker-compose.yml
+└── Makefile
 ```
 
-## API Endpoints
+---
 
-### AI Service (FastAPI)
+## 🔌 API Endpoints
 
-- `POST /scrape` - Scrape novel from URL
-- `POST /translate` - Translate content with terminology
-- `POST /extract-terminology` - Extract terms from text
-- `GET /health` - Health check
-
-### Backend (gRPC)
-
-See `backend/proto/bookreading.proto` for service definitions.
-
-## Database Schema
-
-Key tables:
-- `novels` - Novel metadata
-- `chapters` - Chapter content and translations
-- `terminology` - Consistent term translations
-- `translation_history` - Translation memory
-- `user_progress` - Reading progress tracking
-
-## Terminology System
-
-The platform maintains translation consistency through:
-
-1. **Manual Entry**: Users can add character names, locations, etc.
-2. **Auto-Extraction**: AI extracts frequently occurring terms
-3. **Context-Aware Translation**: Previous translations inform future ones
-4. **Confidence Scoring**: Auto-generated terms can be reviewed/edited
-
-## Usage Example
-
-1. **Scrape a Novel**
-   - Go to homepage
-   - Paste URL: `https://www.piaotia.com/html/6/6760/`
-   - Click "Scrape"
-
-2. **Manage Terminology**
-   - Go to Terminology page
-   - Add character names and their Thai translations
-   - These will be used consistently across all chapters
-
-3. **Read & Translate**
-   - Select a novel from the list
-   - Choose a chapter
-   - Click "Translate to Thai"
-   - Toggle between original and translated text
-
-## Production Considerations
-
-### Translation Integration
-
-The current implementation uses a simple rule-based translation. For production:
-
-```python
-# Replace simple_translate() in ai-service/main.py with:
-
-# Option 1: Google Translate API
-from google.cloud import translate
-def translate_with_google(text, source, target):
-    client = translate.TranslationServiceClient()
-    # ... implementation
-
-# Option 2: DeepL API
-import deepl
-def translate_with_deepl(text, source, target):
-    translator = deepl.Translator("YOUR_API_KEY")
-    # ... implementation
-
-# Option 3: LLM (OpenAI, Claude, etc.)
-import openai
-def translate_with_llm(text, terminology, context):
-    prompt = f"""Translate the following Chinese text to Thai.
-    Use these terms consistently: {terminology}
-    Previous context: {context}
-    
-    Text: {text}
-    """
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content
+### Backend (HTTP)
+```
+POST   /api/auth/register          - Register user
+POST   /api/auth/login             - Login user
+GET    /api/novels                 - List novels
+POST   /api/novels                 - Scrape novel
+GET    /api/chapters               - List chapters
+POST   /api/chapters/translate     - Translate chapter
+POST   /api/subscriptions          - Subscribe to updates
+GET    /api/subscriptions          - Get subscriptions
+POST   /api/reading-progress       - Save progress
+GET    /api/reading-progress       - Get progress
+POST   /api/bookmarks              - Add bookmark
+DELETE /api/bookmarks              - Remove bookmark
+POST   /api/feedback               - Submit feedback
+GET    /api/feedback/quality-score - Get quality score
+POST   /api/settings/api-keys      - Save API key
+GET    /api/settings/api-keys      - Get key prefixes
+GET    /api/health                 - Health check
+GET    /api/ready                  - Ready check
 ```
 
-### Scalability
+### AI Service
+```
+POST   /scrape                     - Scrape novel
+POST   /translate                  - Translate text
+POST   /translate/agentic          - Agentic translation
+POST   /translate/pipeline         - Pipeline translation
+POST   /manga/translate            - Translate manga image
+GET    /health                     - Health check
+```
 
-- Add Redis for caching translations
-- Implement job queue (Celery/Bull) for background scraping/translation
-- Use CDN for static assets
-- Add rate limiting for scraping
+---
 
-### Security
+## 🧪 Development
 
-- Add user authentication
-- Implement API rate limiting
-- Sanitize scraped content
-- Use environment variables for secrets
+### Run Migrations
+```bash
+make migrate-up          # Apply all pending
+make migrate-down        # Rollback last
+make migrate-status      # Check status
+make migrate-create NAME=add_something  # Create new
+```
 
-## License
+### Run Tests
+```bash
+# Backend
+cd backend && go test ./...
 
-MIT
+# AI Service
+cd ai-service && pytest -v
+
+# Frontend
+cd frontend && npm test
+```
+
+### Lint
+```bash
+# Backend
+cd backend && golangci-lint run
+
+# AI Service
+cd ai-service && ruff check .
+
+# Frontend
+cd frontend && npm run lint
+```
+
+---
+
+## 🚢 Production Deployment
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for complete production deployment guide including:
+- SSL/HTTPS configuration
+- Nginx reverse proxy
+- Database backups
+- Monitoring
+- Scaling
+
+---
+
+## 📊 Features Implemented
+
+### Phase 1: Security & Quality ✅
+- [x] Remove hardcoded secrets
+- [x] CORS configuration from environment
+- [x] API keys moved to backend
+- [x] Structured logging
+- [x] Error handling improvements
+- [x] Toast notifications
+- [x] Loading skeletons
+
+### Phase 2: Core Features ✅
+- [x] Auto-update novel tracking
+- [x] Reading progress & bookmarks
+- [x] Translation quality feedback
+- [x] Keyboard navigation (reader)
+- [x] Rate limiting (APIs)
+- [x] Health checks with dependencies
+- [x] Manga reader connected to translator
+
+### Phase 3: Production Ready ✅
+- [x] Settings page uses backend API keys
+- [x] Production deployment guide
+- [x] Database migrations
+- [x] CI/CD pipelines
+- [x] Comprehensive documentation
+
+---
+
+## 📖 Documentation
+
+| Document | Description |
+|----------|-------------|
+| [DEPLOYMENT.md](./DEPLOYMENT.md) | Production deployment guide |
+| [IMPROVEMENTS.md](./IMPROVEMENTS.md) | All improvements made |
+| [NEW_FEATURES.md](./NEW_FEATURES.md) | New features guide |
+| [FRONTEND_INTEGRATION.md](./FRONTEND_INTEGRATION.md) | Frontend integration guide |
+| [UI_UX_FIXES_COMPLETE.md](./UI_UX_FIXES_COMPLETE.md) | UI/UX fixes documentation |
+| [PHASE1_COMPLETE.md](./PHASE1_COMPLETE.md) | Phase 1 summary |
+| [PHASE2_COMPLETE.md](./PHASE2_COMPLETE.md) | Phase 2 summary |
+| [BACKEND_HANDLERS_COMPLETE.md](./BACKEND_HANDLERS_COMPLETE.md) | Backend handlers guide |
+| [docs/API.md](./docs/API.md) | API documentation |
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License.
+
+---
+
+**Version:** 3.0.0  
+**Last Updated:** April 11, 2026  
+**Status:** Production Ready ✅

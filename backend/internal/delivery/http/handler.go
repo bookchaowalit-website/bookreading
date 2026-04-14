@@ -11,19 +11,43 @@ import (
 	"github.com/bookreading/backend/internal/usecase"
 )
 
+type contextKey string
+
+const UserIDKey contextKey = "user_id"
+
 type Handler struct {
-	userUsecase    *usecase.UserUsecase
-	novelUsecase   domain.NovelUseCase
-	chapterUsecase domain.ChapterUseCase
-	translationHistoryRepo domain.TranslationHistoryRepository
+	userUsecase                *usecase.UserUsecase
+	novelUsecase               domain.NovelUseCase
+	chapterUsecase             domain.ChapterUseCase
+	translationHistoryRepo     domain.TranslationHistoryRepository
+	novelUpdateUseCase         *usecase.NovelUpdateUseCase
+	readingProgressUseCase     *usecase.ReadingProgressUseCase
+	bookmarkUseCase            *usecase.BookmarkUseCase
+	translationFeedbackUseCase *usecase.TranslationFeedbackUseCase
+	apiKeyUseCase              *usecase.APIKeyUseCase
 }
 
 func NewHandler(userUsecase *usecase.UserUsecase, novelUsecase domain.NovelUseCase, chapterUsecase domain.ChapterUseCase, translationHistoryRepo domain.TranslationHistoryRepository) *Handler {
 	return &Handler{
-		userUsecase:    userUsecase,
-		novelUsecase:   novelUsecase,
-		chapterUsecase: chapterUsecase,
+		userUsecase:            userUsecase,
+		novelUsecase:           novelUsecase,
+		chapterUsecase:         chapterUsecase,
 		translationHistoryRepo: translationHistoryRepo,
+	}
+}
+
+// NewHandlerWithDeps creates a handler with injected dependencies
+func NewHandlerWithDeps(deps *ServerDependencies) *Handler {
+	return &Handler{
+		userUsecase:                deps.UserUsecase,
+		novelUsecase:               deps.NovelUsecase,
+		chapterUsecase:             deps.ChapterUsecase,
+		translationHistoryRepo:     deps.TranslationHistRepo,
+		novelUpdateUseCase:         deps.NovelUpdateUseCase,
+		readingProgressUseCase:     deps.ReadingProgressUseCase,
+		bookmarkUseCase:            deps.BookmarkUseCase,
+		translationFeedbackUseCase: deps.TranslationFeedbackUseCase,
+		apiKeyUseCase:              deps.APIKeyUseCase,
 	}
 }
 
@@ -521,4 +545,10 @@ type ctxKey string
 
 func contextWithUserID(ctx context.Context, userID string) context.Context {
 	return context.WithValue(ctx, ctxKey("userID"), userID)
+}
+
+// GetUserIDFromContext extracts user ID from context
+func GetUserIDFromContext(ctx context.Context) (string, bool) {
+	userID, ok := ctx.Value(UserIDKey).(string)
+	return userID, ok
 }

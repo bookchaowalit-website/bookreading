@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useTheme } from '@/providers/ThemeProvider';
 
 export default function AppLayout({
   children,
@@ -11,8 +12,8 @@ export default function AppLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { darkMode, toggleDarkMode } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
   const [user, setUser] = useState<{ name: string; email: string } | null>(null);
 
   useEffect(() => {
@@ -28,10 +29,6 @@ export default function AppLayout({
     if (userData) {
       setUser(JSON.parse(userData));
     }
-
-    if (typeof window !== 'undefined') {
-      setDarkMode(window.matchMedia('(prefers-color-scheme: dark)').matches);
-    }
   }, [router]);
 
   const handleLogout = () => {
@@ -41,11 +38,19 @@ export default function AppLayout({
   };
 
   const navigation = [
+    // Main
     { name: 'แดชบอร์ด', href: '/app', icon: '📊', current: pathname === '/app' },
-    { name: 'นิยาย', href: '/app/chapters', icon: '📚', current: pathname === '/app/chapters' },
+    // Reading
+    { name: 'นิยาย (จีน/เกาหลี)', href: '/app/chapters', icon: '📚', current: pathname === '/app/chapters' },
     { name: 'อ่านนิยาย', href: '/app/reader', icon: '📖', current: pathname === '/app/reader' },
+    { name: 'มังงะ/มังฮวา', href: '/app/manga', icon: '🎨', current: pathname === '/app/manga' },
+    { name: 'อ่านมังงะ', href: '/app/manga-reader', icon: '📕', current: pathname === '/app/manga-reader' },
+    // Library & Tools
     { name: 'ไลบรารี', href: '/app/library', icon: '💾', current: pathname === '/app/library' },
+    { name: 'ออฟไลน์', href: '/app/offline', icon: '📴', current: pathname === '/app/offline' },
+    { name: 'การติดตาม', href: '/app/subscriptions', icon: '🔔', current: pathname === '/app/subscriptions' },
     { name: 'คำศัพท์', href: '/app/terminology', icon: '📝', current: pathname === '/app/terminology' },
+    // Settings
     { name: 'การตั้งค่า', href: '/app/settings', icon: '⚙️', current: pathname === '/app/settings' },
   ];
 
@@ -95,8 +100,8 @@ export default function AppLayout({
               key={item.name}
               href={item.href}
               className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${item.current
-                  ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
               onClick={() => setSidebarOpen(false)}
             >
@@ -153,8 +158,9 @@ export default function AppLayout({
             {/* Right side actions */}
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setDarkMode(!darkMode)}
+                onClick={toggleDarkMode}
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                aria-label={darkMode ? 'เปิดโหมดสว่าง' : 'เปิดโหมดมืด'}
               >
                 {darkMode ? '☀️' : '🌙'}
               </button>
