@@ -4,12 +4,23 @@ import { useState } from 'react';
 import { useNovelSubscriptions, useUpdateHistory } from '@/hooks/useSubscriptions';
 import { useToast } from '@/providers/ToastProvider';
 import Link from 'next/link';
+import Skeleton from '@/components/Skeleton';
+import { Bell, RefreshCw, Clock, AlertCircle } from 'lucide-react';
 
 export default function SubscriptionsPage() {
   const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const { success, error: toastError, warning, info } = useToast();
   const { subscriptions, loading, error: subError, unsubscribe, triggerUpdate } = useNovelSubscriptions(userId || undefined);
   const [selectedNovel, setSelectedNovel] = useState<string | null>(null);
+
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto p-6 space-y-6">
+        <Skeleton variant="title" className="w-48" />
+        <Skeleton count={3} variant="card" className="h-24" />
+      </div>
+    );
+  }
 
   const handleTriggerUpdate = async () => {
     const confirmed = confirm('ต้องการตรวจสอบนิยายที่มีการติดตามหรือไม่?');
@@ -38,7 +49,7 @@ export default function SubscriptionsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            🔔 นิยายที่ติดตาม
+            <Bell size={24} className="inline" /> นิยายที่ติดตาม
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             ระบบจะตรวจสอบ chapter ใหม่อัตโนมัติทุก 1 ชั่วโมง

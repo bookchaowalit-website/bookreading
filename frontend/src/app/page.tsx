@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { BookOpen, Library, Database, Smartphone, Moon, Sun, Sparkles, Check } from 'lucide-react';
 
 export default function LandingPage() {
   const [darkMode, setDarkMode] = useState(false);
@@ -15,37 +16,37 @@ export default function LandingPage() {
 
   const features = [
     {
-      icon: '📖',
+      icon: <BookOpen size={28} className="text-white" />,
       title: 'ดึงนิยายอัตโนมัติ',
       description: 'วางลิงก์แล้วอ่านได้เลย รองรับเว็บนิยายจีนหลากหลายแหล่ง',
       color: 'from-blue-500 to-blue-600',
     },
     {
-      icon: '🌐',
+      icon: <Sparkles size={28} className="text-white" />,
       title: 'แปลอัจฉริยะ',
       description: 'แปลจีนเป็นไทยด้วย AI พร้อมระบบจำคำศัพท์ตัวละคร',
       color: 'from-purple-500 to-purple-600',
     },
     {
-      icon: '📚',
+      icon: <Library size={28} className="text-white" />,
       title: 'จัดการคำศัพท์',
       description: 'ชื่อตัวละครสอดคล้องตลอดเรื่อง ไม่เพี้ยน ปรับแก้ได้เอง',
       color: 'from-green-500 to-green-600',
     },
     {
-      icon: '💾',
+      icon: <Database size={28} className="text-white" />,
       title: 'บันทึกและซิงค์',
       description: 'บันทึกนิยายโปรด ติดตามความคืบหน้าการอ่าน',
       color: 'from-orange-500 to-orange-600',
     },
     {
-      icon: '🌙',
+      icon: <Moon size={28} className="text-white" />,
       title: 'โหมดกลางคืน',
       description: 'อ่านสบายตาทั้งกลางวันและกลางคืน ปรับขนาดตัวอักษรได้',
       color: 'from-indigo-500 to-indigo-600',
     },
     {
-      icon: '📱',
+      icon: <Smartphone size={28} className="text-white" />,
       title: 'รองรับทุกอุปกรณ์',
       description: 'ใช้งานได้บนมือถือ แท็บเล็ต และคอมพิวเตอร์',
       color: 'from-pink-500 to-pink-600',
@@ -108,7 +109,7 @@ export default function LandingPage() {
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <Link href="/" className="flex items-center gap-3">
-              <span className="text-3xl">📚</span>
+              <BookOpen size={32} />
               <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                 BookReading
               </span>
@@ -133,7 +134,7 @@ export default function LandingPage() {
                 onClick={() => setDarkMode(!darkMode)}
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               >
-                {darkMode ? '☀️' : '🌙'}
+                {darkMode ? <Sun size={20} /> : <Moon size={20} />}
               </button>
               <Link
                 href="/login"
@@ -181,7 +182,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto">
           <div className="text-center py-16 md:py-24">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 rounded-full text-sm mb-6">
-              <span>✨</span>
+              <Sparkles size={14} />
               <span>ใหม่! รองรับการแปลด้วย AI ที่แม่นยำขึ้น</span>
             </div>
 
@@ -278,7 +279,7 @@ export default function LandingPage() {
                 key={index}
                 className="group p-6 bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 hover:shadow-xl transition-all hover:-translate-y-1"
               >
-                <div className={`w-14 h-14 bg-gradient-to-br ${feature.color} rounded-xl flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform`}>
+                <div className={`w-14 h-14 bg-gradient-to-br ${feature.color} rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                   {feature.icon}
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
@@ -347,8 +348,8 @@ export default function LandingPage() {
               <div
                 key={index}
                 className={`relative p-6 rounded-2xl border-2 ${plan.popular
-                    ? 'border-blue-500 dark:border-blue-400 shadow-xl'
-                    : 'border-gray-200 dark:border-gray-700'
+                  ? 'border-blue-500 dark:border-blue-400 shadow-xl'
+                  : 'border-gray-200 dark:border-gray-700'
                   } bg-white dark:bg-gray-800`}
               >
                 {plan.popular && (
@@ -371,7 +372,7 @@ export default function LandingPage() {
                 <ul className="space-y-3 mb-6">
                   {plan.features.map((feature, fIndex) => (
                     <li key={fIndex} className="flex items-center gap-3 text-gray-600 dark:text-gray-300">
-                      <span className="text-green-500">✓</span>
+                      <Check size={16} className="text-green-500" />
                       {feature}
                     </li>
                   ))}
@@ -380,8 +381,8 @@ export default function LandingPage() {
                 <Link
                   href="/register"
                   className={`block w-full py-3 text-center rounded-xl font-semibold transition-colors ${plan.popular
-                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:opacity-90'
-                      : 'border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:opacity-90'
+                    : 'border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                     }`}
                 >
                   {plan.cta}
@@ -449,7 +450,7 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-4 gap-8">
             <div>
               <div className="flex items-center gap-3 mb-4">
-                <span className="text-3xl">📚</span>
+                <BookOpen size={32} />
                 <span className="text-xl font-bold">BookReading</span>
               </div>
               <p className="text-gray-400">

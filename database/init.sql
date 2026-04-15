@@ -41,9 +41,11 @@ CREATE TABLE chapters (
     chapter_number INTEGER NOT NULL,
     title VARCHAR(500) NOT NULL,
     original_title VARCHAR(500),
+    url VARCHAR(500) DEFAULT '',
     source_url VARCHAR(1000),
     content TEXT,
     original_content TEXT,
+    translated_content TEXT DEFAULT '',
     word_count INTEGER DEFAULT 0,
     is_translated BOOLEAN DEFAULT FALSE,
     is_scraped BOOLEAN DEFAULT FALSE,
@@ -62,9 +64,9 @@ CREATE TABLE terminology (
     term_type VARCHAR(50), -- character, location, item, technique, organization, etc.
     description TEXT,
     is_auto_generated BOOLEAN DEFAULT FALSE,
-    confidence_score FLOAT DEFAULT 1.0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    confidence_score DOUBLE PRECISION DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(novel_id, original_term)
 );
 
@@ -125,9 +127,11 @@ CREATE INDEX idx_user_library_user ON user_library(user_id);
 CREATE INDEX idx_user_library_novel ON user_library(novel_id);
 CREATE INDEX idx_user_terminology_user ON user_terminology(user_id);
 CREATE INDEX idx_chapters_novel_id ON chapters(novel_id);
-CREATE INDEX idx_chapters_number ON chapters(novel_id, chapter_number);
+CREATE INDEX idx_chapters_chapter_number ON chapters(chapter_number);
+CREATE INDEX idx_chapters_novel_number ON chapters(novel_id, chapter_number);
 CREATE INDEX idx_terminology_novel_id ON terminology(novel_id);
 CREATE INDEX idx_terminology_original ON terminology(original_term);
+CREATE INDEX idx_terminology_confidence ON terminology(confidence_score DESC);
 CREATE INDEX idx_translation_history_chapter ON translation_history(chapter_id);
 CREATE INDEX idx_user_progress_user ON user_progress(user_id);
 CREATE INDEX idx_user_progress_chapter ON user_progress(chapter_id);
@@ -239,19 +243,67 @@ CREATE TABLE character_profiles (
     UNIQUE(novel_id, original_name)
 );
 
--- Indexes for new tables
-CREATE INDEX idx_quality_scores_chapter ON translation_quality_scores(chapter_id);
-CREATE INDEX idx_review_queue_novel ON review_queue(novel_id);
-CREATE INDEX idx_review_queue_status ON review_queue(status);
-CREATE INDEX idx_review_queue_priority ON review_queue(priority DESC);
-CREATE INDEX idx_agent_results_chapter ON agent_pipeline_results(chapter_id);
-CREATE INDEX idx_agent_results_role ON agent_pipeline_results(agent_role);
-CREATE INDEX idx_translation_sessions_novel ON translation_sessions(novel_id, chapter_number);
-CREATE INDEX idx_character_profiles_novel ON character_profiles(novel_id);
-
 -- Apply updated_at trigger for review_queue
 CREATE TRIGGER update_review_queue_updated_at BEFORE UPDATE ON review_queue
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_character_profiles_updated_at BEFORE UPDATE ON character_profiles
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Indexes for multi-agent translation tables
+CREATE INDEX idx_quality_scores_chapter ON translation_quality_scores(chapter_id);
+CREATE INDEX idx_review_queue_novel ON review_queue(novel_id);
+CREATE INDEX idx_review_queue_status ON review_queue(status);
+CREATE INDEX idx_review_queue_priority ON review_queue(priority DESC);
+CREATE INDEX idx_agent_results_chapter ON agent_pipeline_results(chapter_id);
+CREATE INDEX idx_agent_results_role ON agent_pipeline_results(agent_role);
+
+-- Translation feedback table
+CREATE TABLE IF NOT EXISTS translation_feedback (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    novel_id VARCHAR(100) NOT NULL,
+    chapter_number INTEGER NOT NULL,
+    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    comment TEXT,
+    has_errors BOOLEAN DEFAULT FALSE,
+    error_details JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, novel_id, chapter_number)
+);
+
+CREATE INDEX idx_feedback_novel_chapter ON translation_feedback(novel_id, chapter_number);
+CREATE INDEX idx_feedback_user ON translation_feedback(user_id);
+
+-- Novel subscriptions (auto-update tracking)
+CREATE TABLE IF NOT EXISTS novel_subscriptions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    novel_id VARCHAR(100) NOT NULL,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    source_url TEXT NOT NULL,
+    source_type VARCHAR(50) DEFAULT 'novel',
+    last_chapter_count INTEGER DEFAULT 0,
+    last_checked_at TIMESTAMP WITH TIME ZONE,
+    last_updated_at TIMESTAMP WITH TIME ZONE,
+    check_interval_hours INTEGER DEFAULT 12,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_active ON novel_subscriptions(is_active);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_checked ON novel_subscriptions(last_checked_at ASC NULLS FIRST);
+
+-- Novel update history
+CREATE TABLE IF NOT EXISTS novel_update_history (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    novel_id VARCHAR(100) NOT NULL,
+    status VARCHAR(50) DEFAULT 'checking',
+    chapters_added INTEGER DEFAULT 0,
+    error_message TEXT,
+    checked_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX IF NOT EXISTS idx_update_history_novel ON novel_update_history(novel_id);
+CREATE INDEX IF NOT EXISTS idx_update_history_checked ON novel_update_history(checked_at DESC);
+CREATE INDEX idx_translation_sessions_novel ON translation_sessions(novel_id);
+CREATE INDEX idx_translation_sessions_chapter ON translation_sessions(chapter_number);
+CREATE INDEX idx_character_profiles_novel ON character_profiles(novel_id);

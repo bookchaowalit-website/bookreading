@@ -5,6 +5,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { authApi } from '@/lib/api';
 import { useToast } from '@/providers/ToastProvider';
+import { Eye, EyeOff, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+
+interface ValidationErrors {
+  name?: string;
+  email?: string;
+  password?: string;
+  confirmPassword?: string;
+  acceptTerms?: string;
+}
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -16,8 +25,78 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
+  const [errors, setErrors] = useState<ValidationErrors>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Real-time validation
+  const validateField = (field: string, value: any) => {
+    let error: string | undefined;
+
+    switch (field) {
+      case 'name':
+        if (!value) error = 'กรุณากรอกชื่อ';
+        else if (value.length < 2) error = 'ชื่อต้องมีอย่างน้อย 2 ตัวอักษร';
+        break;
+      case 'email':
+        if (!value) error = 'กรุณากรอกอีเมล';
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) error = 'รูปแบบอีเมลไม่ถูกต้อง';
+        break;
+      case 'password':
+        if (!value) error = 'กรุณากรอกรหัสผ่าน';
+        else if (value.length < 6) error = 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร';
+        break;
+      case 'confirmPassword':
+        if (!value) error = 'กรุณายืนยันรหัสผ่าน';
+        else if (value !== password) error = 'รหัสผ่านไม่ตรงกัน';
+        break;
+      case 'acceptTerms':
+        if (!value) error = 'กรุณายอมรับข้อกำหนดการใช้งาน';
+        break;
+    }
+
+    setErrors(prev => ({ ...prev, [field]: error }));
+    return !error;
+  };
+
+  const handleBlur = (field: string) => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+    validateField(field, field === 'acceptTerms' ? acceptTerms :
+      field === 'name' ? name :
+        field === 'email' ? email :
+          field === 'password' ? password : confirmPassword);
+  };
+
+  // Check if form is valid
+  const isFormValid = (): boolean => {
+    const isNameValid = name.length >= 2;
+    const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    const isPasswordValid = password.length >= 6;
+    const isConfirmValid = confirmPassword === password && confirmPassword.length > 0;
+    const isTermsAccepted = acceptTerms;
+    return isNameValid && isEmailValid && isPasswordValid && isConfirmValid && isTermsAccepted;
+  };
+
+  // Password strength
+  const getPasswordStrength = (): { score: number; label: string; color: string } => {
+    if (!password) return { score: 0, label: '', color: '' };
+    if (password.length < 6) return { score: 1, label: 'สั้นเกินไป', color: 'text-red-500' };
+
+    let score = 0;
+    if (password.length >= 8) score++;
+    if (password.length >= 12) score++;
+    if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score++;
+    if (/\d/.test(password)) score++;
+    if (/[^A-Za-z0-9]/.test(password)) score++;
+
+    if (score <= 1) return { score: 1, label: 'อ่อนมาก', color: 'text-red-500' };
+    if (score <= 2) return { score: 2, label: 'อ่อน', color: 'text-yellow-500' };
+    if (score <= 3) return { score: 3, label: 'ปานกลาง', color: 'text-blue-500' };
+    return { score: 4, label: 'แข็งแรง', color: 'text-green-500' };
+  };
+
+  const passwordStrength = getPasswordStrength();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,42 +176,74 @@ export default function RegisterPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="register-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 ชื่อ
               </label>
               <input
+                id="register-name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                onBlur={() => handleBlur('name')}
+                className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white ${touched.name && errors.name ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                  }`}
                 placeholder="ชื่อของคุณ"
+                autoComplete="name"
               />
+              {touched.name && errors.name && (
+                <p className="mt-1 text-sm text-red-500 flex items-center gap-1">
+                  <XCircle size={14} /> {errors.name}
+                </p>
+              )}
+              {touched.name && !errors.name && name.length >= 2 && (
+                <p className="mt-1 text-sm text-green-500 flex items-center gap-1">
+                  <CheckCircle2 size={14} /> ใช้ได้
+                </p>
+              )}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="register-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 อีเมล
               </label>
               <input
+                id="register-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                onBlur={() => handleBlur('email')}
+                className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white ${touched.email && errors.email ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                  }`}
                 placeholder="your@email.com"
+                autoComplete="email"
               />
+              {touched.email && errors.email && (
+                <p className="mt-1 text-sm text-red-500 flex items-center gap-1">
+                  <XCircle size={14} /> {errors.email}
+                </p>
+              )}
+              {touched.email && !errors.email && email.length > 0 && (
+                <p className="mt-1 text-sm text-green-500 flex items-center gap-1">
+                  <CheckCircle2 size={14} /> ใช้ได้
+                </p>
+              )}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="register-password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 รหัสผ่าน
               </label>
               <div className="relative">
                 <input
+                  id="register-password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 pr-12 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  onBlur={() => handleBlur('password')}
+                  className={`w-full px-4 py-3 pr-12 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white ${touched.password && errors.password ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                    }`}
                   placeholder="อย่างน้อย 6 ตัวอักษร"
+                  autoComplete="new-password"
                 />
                 <button
                   type="button"
@@ -140,7 +251,7 @@ export default function RegisterPage() {
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                   aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
                 >
-                  {showPassword ? '🙈' : '👁️'}
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
               </div>
               {/* Password strength indicator */}
@@ -150,37 +261,46 @@ export default function RegisterPage() {
                     {[1, 2, 3, 4].map(level => (
                       <div
                         key={level}
-                        className={`h-1 flex-1 rounded-full transition-colors ${password.length >= level * 3
-                            ? level <= 1 ? 'bg-red-500'
-                              : level <= 2 ? 'bg-yellow-500'
-                                : level <= 3 ? 'bg-blue-500'
-                                  : 'bg-green-500'
-                            : 'bg-gray-200 dark:bg-gray-700'
+                        className={`h-1.5 flex-1 rounded-full transition-colors ${passwordStrength.score >= level
+                          ? level <= 1 ? 'bg-red-500'
+                            : level <= 2 ? 'bg-yellow-500'
+                              : level <= 3 ? 'bg-blue-500'
+                                : 'bg-green-500'
+                          : 'bg-gray-200 dark:bg-gray-700'
                           }`}
                       />
                     ))}
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {password.length < 6 ? '❌ สั้นเกินไป' :
-                      password.length < 9 ? '⚠️ อ่อน' :
-                        password.length < 12 ? '✓ ปานกลาง' :
-                          '✓✓ แข็งแรง'}
+                  <p className={`text-xs ${passwordStrength.color}`}>
+                    {passwordStrength.score <= 1 ? <XCircle size={12} className="inline mr-1" /> :
+                      passwordStrength.score <= 2 ? <AlertCircle size={12} className="inline mr-1" /> :
+                        <CheckCircle2 size={12} className="inline mr-1" />}
+                    {passwordStrength.label}
                   </p>
                 </div>
+              )}
+              {touched.password && errors.password && (
+                <p className="mt-1 text-sm text-red-500 flex items-center gap-1">
+                  <XCircle size={14} /> {errors.password}
+                </p>
               )}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label htmlFor="register-confirm-password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 ยืนยันรหัสผ่าน
               </label>
               <div className="relative">
                 <input
+                  id="register-confirm-password"
                   type={showConfirmPassword ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-4 py-3 pr-12 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  onBlur={() => handleBlur('confirmPassword')}
+                  className={`w-full px-4 py-3 pr-12 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white ${touched.confirmPassword && errors.confirmPassword ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+                    }`}
                   placeholder="กรอกรหัสผ่านอีกครั้ง"
+                  autoComplete="new-password"
                 />
                 <button
                   type="button"
@@ -188,9 +308,19 @@ export default function RegisterPage() {
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                   aria-label={showConfirmPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
                 >
-                  {showConfirmPassword ? '🙈' : '👁️'}
+                  {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
               </div>
+              {confirmPassword && confirmPassword === password && (
+                <p className="mt-1 text-sm text-green-500 flex items-center gap-1">
+                  <CheckCircle2 size={14} /> รหัสผ่านตรงกัน
+                </p>
+              )}
+              {touched.confirmPassword && errors.confirmPassword && (
+                <p className="mt-1 text-sm text-red-500 flex items-center gap-1">
+                  <XCircle size={14} /> {errors.confirmPassword}
+                </p>
+              )}
             </div>
 
             <div className="flex items-start gap-2">
@@ -211,8 +341,8 @@ export default function RegisterPage() {
 
             <button
               type="submit"
-              disabled={isLoading}
-              className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+              disabled={isLoading || !isFormValid()}
+              className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? 'กำลังสมัครสมาชิก...' : 'สมัครสมาชิก'}
             </button>

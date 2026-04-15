@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+
 	"github.com/bookreading/backend/internal/domain"
 	"github.com/bookreading/backend/internal/infrastructure/aiservice"
 	"github.com/google/uuid"
@@ -41,6 +42,23 @@ func (uc *chapterUseCase) ListChapters(ctx context.Context, novelID string, limi
 	return uc.chapterRepo.ListByNovelID(ctx, novelID, limit, offset)
 }
 
+func (uc *chapterUseCase) SaveTranslatedContent(ctx context.Context, chapterID string, translatedText string) error {
+	chapter, err := uc.chapterRepo.GetByID(ctx, chapterID)
+	if err != nil {
+		return err
+	}
+	if chapter == nil {
+		return fmt.Errorf("chapter not found")
+	}
+	chapter.Content = translatedText
+	chapter.IsTranslated = true
+	return uc.chapterRepo.Update(ctx, chapter)
+}
+
+func (uc *chapterUseCase) UpdateChapter(ctx context.Context, chapter *domain.Chapter) error {
+	return uc.chapterRepo.Update(ctx, chapter)
+}
+
 func (uc *chapterUseCase) TranslateChapter(ctx context.Context, chapterID, targetLang string, useContext bool) (*domain.Chapter, error) {
 	// Get chapter
 	chapter, err := uc.chapterRepo.GetByID(ctx, chapterID)
@@ -49,6 +67,11 @@ func (uc *chapterUseCase) TranslateChapter(ctx context.Context, chapterID, targe
 	}
 	if chapter == nil {
 		return nil, fmt.Errorf("chapter not found")
+	}
+
+	// If already translated, return cached result
+	if chapter.IsTranslated && chapter.Content != "" {
+		return chapter, nil
 	}
 
 	// Get terminology for context
@@ -164,13 +187,13 @@ func (uc *chapterUseCase) SaveChapter(ctx context.Context, novelID string, chapt
 	}
 
 	newChapter := &domain.Chapter{
-		ID:             uuid.New().String(),
-		NovelID:        novelID,
-		ChapterNumber:  chapter.ChapterNumber,
-		Title:          chapter.Title,
-		OriginalTitle:  chapter.OriginalTitle,
-		URL:            chapter.URL,
-		Content:        chapter.Content,
+		ID:                uuid.New().String(),
+		NovelID:           novelID,
+		ChapterNumber:     chapter.ChapterNumber,
+		Title:             chapter.Title,
+		OriginalTitle:     chapter.OriginalTitle,
+		URL:               chapter.URL,
+		Content:           chapter.Content,
 		TranslatedContent: "",
 	}
 

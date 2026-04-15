@@ -1,9 +1,19 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import ReadingProgressTracker from '@/components/ReadingProgressTracker';
-import AddBookmarkButton from '@/components/AddBookmarkButton';
+import dynamic from 'next/dynamic';
 import { useCurrentReadingSession, useBookmarks } from '@/hooks/useReadingProgress';
+import { BookOpen, Smartphone, ZoomIn, ZoomOut, User, Globe } from 'lucide-react';
+
+// Dynamic imports for secondary components
+const ReadingProgressTracker = dynamic(() => import('@/components/ReadingProgressTracker'), {
+  ssr: false,
+  loading: () => <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />,
+});
+const AddBookmarkButton = dynamic(() => import('@/components/AddBookmarkButton'), {
+  ssr: false,
+  loading: () => <div className="w-8 h-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />,
+});
 
 interface MangaPage {
   id: string;
@@ -164,7 +174,7 @@ export default function MangaReaderPage() {
     return (
       <div className="max-w-6xl mx-auto">
         <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 text-center">
-          <div className="text-5xl mb-4">📖</div>
+          <div className="mb-4"><BookOpen size={48} className="mx-auto text-gray-400" /></div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
             Manga Reader
           </h1>
@@ -182,7 +192,7 @@ export default function MangaReaderPage() {
         {/* Reader Features */}
         <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-            <div className="text-2xl mb-2">📱</div>
+            <div className="mb-2"><Smartphone size={32} className="text-blue-600" /></div>
             <h3 className="font-semibold text-gray-900 dark:text-white mb-1">Webtoon Mode</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Vertical scrolling optimized for manhwa/webtoons
@@ -190,7 +200,7 @@ export default function MangaReaderPage() {
           </div>
 
           <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-            <div className="text-2xl mb-2">📑</div>
+            <div className="mb-2"><BookOpen size={32} className="text-green-600" /></div>
             <h3 className="font-semibold text-gray-900 dark:text-white mb-1">Page-by-Page Mode</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Traditional manga reading with page navigation
@@ -198,7 +208,7 @@ export default function MangaReaderPage() {
           </div>
 
           <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-            <div className="text-2xl mb-2">🔍</div>
+            <div className="mb-2"><ZoomIn size={32} className="text-purple-600" /></div>
             <h3 className="font-semibold text-gray-900 dark:text-white mb-1">Zoom & Compare</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Zoom in/out and compare original vs translated
@@ -208,7 +218,7 @@ export default function MangaReaderPage() {
 
         {/* Keyboard shortcuts */}
         <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4">
-          <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-3">⌨️ Keyboard Shortcuts</h3>
+          <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-3"><BookOpen size={18} className="inline mr-2" />Keyboard Shortcuts</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
             <div className="flex items-center gap-2">
               <kbd className="px-2 py-1 bg-white dark:bg-gray-800 rounded text-gray-700 dark:text-gray-300">←/→</kbd>
@@ -252,8 +262,8 @@ export default function MangaReaderPage() {
               onChange={(e) => setViewMode(e.target.value as any)}
               className="px-3 py-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
             >
-              <option value="webtoon">📱 Webtoon (Vertical)</option>
-              <option value="horizontal">📖 Page-by-Page</option>
+              <option value="webtoon"><Smartphone size={14} className="inline mr-1" /> Webtoon (Vertical)</option>
+              <option value="horizontal"><BookOpen size={14} className="inline mr-1" /> Page-by-Page</option>
             </select>
 
             <button
@@ -263,7 +273,7 @@ export default function MangaReaderPage() {
                 : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
                 }`}
             >
-              {showOriginal ? '👤 Original' : '🌐 Translated'}
+              {showOriginal ? <><User size={14} className="inline mr-1" />Original</> : <><Globe size={14} className="inline mr-1" />Translated</>}
             </button>
           </div>
 
@@ -305,18 +315,18 @@ export default function MangaReaderPage() {
             {/* Zoom */}
             <button
               onClick={handleZoomOut}
-              className="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+              className="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 flex items-center justify-center"
             >
-              🔍-
+              <ZoomOut size={18} />
             </button>
             <span className="text-gray-900 dark:text-white text-sm w-12 text-center">
               {zoomLevel}%
             </span>
             <button
               onClick={handleZoomIn}
-              className="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+              className="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 flex items-center justify-center"
             >
-              🔍+
+              <ZoomIn size={18} />
             </button>
 
             {/* Fullscreen */}

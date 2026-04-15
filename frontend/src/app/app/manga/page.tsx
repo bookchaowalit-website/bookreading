@@ -5,6 +5,11 @@ import { mangaApi, MangaTextRegion } from '@/lib/api';
 import ReadingProgressTracker from '@/components/ReadingProgressTracker';
 import AddBookmarkButton from '@/components/AddBookmarkButton';
 import { useCurrentReadingSession, useBookmarks } from '@/hooks/useReadingProgress';
+import {
+  Palette, Upload, Search, CheckCircle2, XCircle, AlertTriangle, Info,
+  BookOpen, Download, Lightbulb, Link2, Loader2, Globe,
+  ChevronLeft, ChevronRight, Play, Pause
+} from 'lucide-react';
 
 type SourceLanguage = 'en' | 'ko' | 'ja' | 'zh' | 'zh-TW';
 type RenderStyle = 'overlay' | 'inpaint' | 'side_by_side';
@@ -346,10 +351,10 @@ export default function MangaTranslatorPage() {
                   'bg-gray-800 text-white'
               }`}
           >
-            <span className="text-xl">
-              {toast.type === 'error' ? '❌' :
-                toast.type === 'success' ? '✅' :
-                  toast.type === 'warning' ? '⚠️' : 'ℹ️'}
+            <span className="text-lg">
+              {toast.type === 'error' ? <XCircle size={18} /> :
+                toast.type === 'success' ? <CheckCircle2 size={18} /> :
+                  toast.type === 'warning' ? <AlertTriangle size={18} /> : <Info size={18} />}
             </span>
             <span className="flex-1 text-sm">{toast.message}</span>
             <button
@@ -365,7 +370,7 @@ export default function MangaTranslatorPage() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-          🎨 Manga/Manhwa Translator
+          <Palette size={24} className="inline mr-2" />Manga/Manhwa Translator
         </h1>
         <p className="text-gray-600 dark:text-gray-400">
           Paste a manga URL to read translated, or upload images manually.
@@ -398,7 +403,7 @@ export default function MangaTranslatorPage() {
             : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
             }`}
         >
-          🔗 Paste URL (Easy)
+          <Link2 size={18} className="inline mr-2" />Paste URL (Easy)
         </button>
         <button
           onClick={() => setInputMode('upload')}
@@ -407,7 +412,7 @@ export default function MangaTranslatorPage() {
             : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
             }`}
         >
-          📤 Upload Images
+          <Upload size={18} className="inline mr-2" />Upload Images
         </button>
       </div>
 
@@ -472,7 +477,7 @@ export default function MangaTranslatorPage() {
       {inputMode === 'url' && (
         <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            🔗 Paste Manga URL
+            <Link2 size={20} className="inline mr-2" />Paste Manga URL
           </h2>
 
           <div className="flex gap-3">
@@ -488,7 +493,7 @@ export default function MangaTranslatorPage() {
               disabled={isFetching || !mangaUrl.trim()}
               className="px-6 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-xl font-medium disabled:opacity-50"
             >
-              {isFetching ? '⏳' : '🔍'}
+              {isFetching ? <Loader2 size={20} className="animate-spin" /> : <Search size={20} />}
             </button>
           </div>
 
@@ -513,7 +518,7 @@ export default function MangaTranslatorPage() {
                     : 'bg-blue-600 hover:bg-blue-700 text-white'
                     }`}
                 >
-                  {isTranslatingUrl ? '⏳ Translating...' : '🌐 Translate to Thai'}
+                  {isTranslatingUrl ? <Loader2 size={20} className="inline mr-2 animate-spin" /> : <Globe size={20} className="inline mr-2" />} {isTranslatingUrl ? 'Translating...' : 'Translate to Thai'}
                 </button>
               </div>
             </div>
@@ -540,7 +545,7 @@ export default function MangaTranslatorPage() {
                 </div>
               </div>
               <p className="mt-2 text-sm text-blue-600 dark:text-blue-400">
-                ✨ Translated pages appear below as they complete!
+                <Lightbulb size={14} className="inline mr-1" /> Translated pages appear below as they complete!
               </p>
             </div>
           )}
@@ -558,7 +563,7 @@ export default function MangaTranslatorPage() {
             className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center hover:border-blue-500 dark:hover:border-blue-400 transition-colors cursor-pointer"
             onClick={() => fileInputRef.current?.click()}
           >
-            <div className="text-4xl mb-3">📤</div>
+            <div className="mb-3"><Upload size={48} className="mx-auto text-gray-400" /></div>
             <p className="text-gray-600 dark:text-gray-400 mb-2">
               Drag and drop manga images here, or click to select
             </p>
@@ -615,7 +620,7 @@ export default function MangaTranslatorPage() {
                   : 'bg-blue-600 hover:bg-blue-700 text-white'
                   }`}
               >
-                {isTranslating ? `⏳ Translating ${translationProgress?.current || 0}/${images.length}...` : '🌐 Translate to Thai'}
+                {isTranslating ? <><Loader2 size={20} className="inline mr-2 animate-spin" />Translating {translationProgress?.current || 0}/{images.length}...</> : <><Globe size={20} className="inline mr-2" />Translate to Thai</>}
               </button>
             </div>
           )}
@@ -639,7 +644,7 @@ export default function MangaTranslatorPage() {
                   href="/app/manga-reader"
                   className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
                 >
-                  <span>📖</span> เปิดใน Reader
+                  <BookOpen size={16} /> เปิดใน Reader
                 </a>
                 <button
                   onClick={() => setCurrentView('original')}
@@ -659,9 +664,9 @@ export default function MangaTranslatorPage() {
                       translatedPages.forEach(p => downloadImage(currentView === 'original' ? p.original_base64 : p.translated_base64, `page-${p.page_number}.png`));
                       showToast(`Downloading ${translatedPages.length} images...`, 'info');
                     }}
-                    className="px-3 py-1 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700"
+                    className="px-3 py-1 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700 flex items-center gap-1"
                   >
-                    📥 Download All
+                    <Download size={14} /> Download All
                   </button>
                 )}
               </div>
@@ -672,7 +677,7 @@ export default function MangaTranslatorPage() {
               <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-4">
                 <div className="flex-1">
                   <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    <span>📖 อ่านแล้ว {translatedPages.length} หน้า</span>
+                    <span className="flex items-center gap-1"><BookOpen size={12} /> อ่านแล้ว {translatedPages.length} หน้า</span>
                     <span>{Math.round((translatedPages.length / (fetchedInfo?.total_pages || translatedPages.length)) * 100)}%</span>
                   </div>
                   <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
@@ -709,7 +714,7 @@ export default function MangaTranslatorPage() {
             {isTranslatingUrl && translationProgress && translationProgress.current < translationProgress.total && (
               <div className="w-full max-w-3xl py-20 flex items-center justify-center bg-gray-200 dark:bg-gray-700">
                 <div className="text-center">
-                  <div className="animate-spin text-4xl mb-3">⏳</div>
+                  <div className="mb-3"><Loader2 size={48} className="mx-auto animate-spin text-gray-500 dark:text-gray-400" /></div>
                   <p className="text-gray-600 dark:text-gray-400">Translating next page...</p>
                 </div>
               </div>
@@ -728,9 +733,9 @@ export default function MangaTranslatorPage() {
                 results.forEach((r, i) => downloadImage(r.translatedBase64, `translated-${i}.png`));
                 showToast(`Downloading ${results.length} images...`, 'info');
               }}
-              className="px-3 py-1 rounded-lg bg-green-600 text-white text-sm"
+              className="px-3 py-1 rounded-lg bg-green-600 text-white text-sm flex items-center gap-1"
             >
-              📥 Download All
+              <Download size={14} /> Download All
             </button>
           </div>
 
@@ -759,11 +764,11 @@ export default function MangaTranslatorPage() {
 
       {/* Instructions */}
       <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4">
-        <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">💡 How to use</h3>
+        <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2"><Lightbulb size={18} className="inline mr-2" />How to use</h3>
         <div className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
           <p><strong>Easy Mode:</strong> Paste a manga URL → Click Translate → Read in webtoon-style reader</p>
           <p><strong>Manual Mode:</strong> Upload images → Translate → Download results</p>
-          <p className="mt-2">⚠️ Requires API keys configured in <a href="/app/settings" className="underline">Settings</a></p>
+          <p className="mt-2"><AlertTriangle size={14} className="inline mr-1" /> Requires API keys configured in <a href="/app/settings" className="underline">Settings</a></p>
         </div>
       </div>
 

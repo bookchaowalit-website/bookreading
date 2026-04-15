@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/providers/ToastProvider';
+import { Settings as SettingsIcon, AlertTriangle, Bell, Trash2, XCircle, Save } from 'lucide-react';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -204,7 +205,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">⚙️ การตั้งค่า</h1>
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-white"><SettingsIcon size={24} className="inline" /> การตั้งค่า</h1>
 
       {/* Profile Section */}
       {user && (
@@ -292,7 +293,7 @@ export default function SettingsPage() {
               <option value="google">Google Translate - ฟรี แต่คุณภาพต่ำกว่า</option>
             </select>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              ⚠️ ต้องตั้งค่า API Key ด้านล่างก่อนใช้งาน
+              <AlertTriangle size={12} className="inline" /> ต้องตั้งค่า API Key ด้านล่างก่อนใช้งาน
             </p>
           </div>
 
@@ -461,7 +462,7 @@ export default function SettingsPage() {
 
       {/* New: Notification Settings */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">🔔 การแจ้งเตือนอัพเดทอัตโนมัติ</h2>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4"><Bell size={20} className="inline" /> การแจ้งเตือนอัพเดทอัตโนมัติ</h2>
 
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -470,10 +471,43 @@ export default function SettingsPage() {
               <p className="text-sm text-gray-500 dark:text-gray-400">แจ้งเตือนเมื่อนิยายที่ติดตามมีบทใหม่</p>
             </div>
             <button
-              onClick={() => setAutoUpdateNotifications(!autoUpdateNotifications)}
+              onClick={() => {
+                setAutoUpdateNotifications(!autoUpdateNotifications);
+                if (!autoUpdateNotifications) {
+                  // Request notification permission when enabling
+                  import('@/lib/notifications').then(({ requestNotificationPermission }) => {
+                    requestNotificationPermission().then(perm => {
+                      if (perm === 'granted') {
+                        success('เปิดการแจ้งเตือนเรียบร้อย!');
+                      }
+                    });
+                  });
+                }
+              }}
               className={`w-12 h-6 rounded-full transition-colors ${autoUpdateNotifications ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
             >
               <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${autoUpdateNotifications ? 'translate-x-6' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-gray-900 dark:text-white">แจ้งเตือนการอ่านประจำวัน</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">เตือนให้อ่านนิยายทุกวัน</p>
+            </div>
+            <button
+              onClick={() => {
+                import('@/lib/notifications').then(({ requestNotificationPermission }) => {
+                  requestNotificationPermission().then(perm => {
+                    if (perm === 'granted') {
+                      success('เปิดการแจ้งเตือนเรียบร้อย!');
+                    }
+                  });
+                });
+              }}
+              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              เปิดใช้งาน
             </button>
           </div>
 
@@ -519,7 +553,7 @@ export default function SettingsPage() {
             onClick={handleClearData}
             className="w-full py-2 border border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 rounded-lg hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors"
           >
-            🗑️ ล้างข้อมูลนิยายและคำศัพท์
+            <Trash2 size={16} className="inline" /> ล้างข้อมูลนิยายและคำศัพท์
           </button>
         </div>
       </div>
@@ -539,7 +573,7 @@ export default function SettingsPage() {
             onClick={handleDeleteAccount}
             className="w-full py-2 border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
           >
-            ❌ ลบบัญชี
+            <XCircle size={16} className="inline" /> ลบบัญชี
           </button>
         </div>
       </div>
@@ -549,7 +583,7 @@ export default function SettingsPage() {
         onClick={handleSaveSettings}
         className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold hover:opacity-90 transition-opacity"
       >
-        💾 บันทึกการตั้งค่า
+        <Save size={20} className="inline" /> บันทึกการตั้งค่า
       </button>
 
       {/* Version */}

@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/bookreading/backend/internal/domain"
@@ -12,11 +13,11 @@ import (
 )
 
 type UserUsecase struct {
-	userRepo     domain.UserRepository
-	libraryRepo  domain.UserLibraryRepository
-	termRepo     domain.UserTerminologyRepository
-	jwtSecret    string
-	jwtExpiry    time.Duration
+	userRepo    domain.UserRepository
+	libraryRepo domain.UserLibraryRepository
+	termRepo    domain.UserTerminologyRepository
+	jwtSecret   string
+	jwtExpiry   time.Duration
 }
 
 func NewUserUsecase(
@@ -72,11 +73,11 @@ func (u *UserUsecase) Register(ctx context.Context, input RegisterInput) (*AuthR
 
 	// Create user
 	user := &domain.User{
-		ID:               uuid.New().String(),
-		Email:            input.Email,
-		PasswordHash:     string(hashedPassword),
-		Name:             input.Name,
-		SubscriptionPlan: "free",
+		ID:                 uuid.New().String(),
+		Email:              input.Email,
+		PasswordHash:       string(hashedPassword),
+		Name:               input.Name,
+		SubscriptionPlan:   "free",
 		SubscriptionStatus: "active",
 	}
 
@@ -97,13 +98,19 @@ func (u *UserUsecase) Login(ctx context.Context, input LoginInput) (*AuthRespons
 	// Get user by email
 	user, err := u.userRepo.GetByEmail(ctx, input.Email)
 	if err != nil {
+		log.Printf("[LOGIN] GetByEmail error: %v", err)
 		return nil, errors.New("invalid credentials")
 	}
+	log.Printf("[LOGIN] Found user: id=%s email=%s hash_len=%d", user.ID, user.Email, len(user.PasswordHash))
+	log.Printf("[LOGIN] PasswordHash stored: %s", user.PasswordHash)
 
 	// Verify password
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.Password)); err != nil {
+	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.Password))
+	if err != nil {
+		log.Printf("[LOGIN] Bcrypt compare error: %v", err)
 		return nil, errors.New("invalid credentials")
 	}
+	log.Printf("[LOGIN] Password verified successfully")
 
 	// Generate token
 	token, err := u.generateToken(user)
@@ -154,6 +161,11 @@ func (u *UserUsecase) generateToken(user *domain.User) (string, error) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(u.jwtSecret))
+}
+
+// GenerateToken is the public method for token generation (used by refresh)
+func (u *UserUsecase) GenerateToken(user *domain.User) (string, error) {
+	return u.generateToken(user)
 }
 
 // Library methods

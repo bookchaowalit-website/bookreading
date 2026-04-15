@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { FEATURED_NOVELS } from '@/lib/novels';
 import { useReadingProgress } from '@/hooks/useReadingProgress';
 import { useNovelSubscriptions } from '@/hooks/useSubscriptions';
+import Skeleton from '@/components/Skeleton';
+import { BookOpen, Library, FileText, Bell, Settings, Lightbulb } from 'lucide-react';
 
 interface SavedNovel {
   id: string;
@@ -16,6 +18,7 @@ interface SavedNovel {
 }
 
 export default function DashboardPage() {
+  const [isLoading, setIsLoading] = useState(true);
   const [recentNovels, setRecentNovels] = useState<SavedNovel[]>([]);
   const [stats, setStats] = useState({
     totalNovels: 0,
@@ -29,6 +32,9 @@ export default function DashboardPage() {
   const { subscriptions } = useNovelSubscriptions(userId);
 
   useEffect(() => {
+    // Simulate initial load
+    const timer = setTimeout(() => setIsLoading(false), 500);
+
     // Load library from localStorage
     const savedLibrary = localStorage.getItem('novelLibrary');
     if (savedLibrary) {
@@ -40,6 +46,7 @@ export default function DashboardPage() {
         totalWords: library.reduce((acc: number, n: any) => acc + (n.content?.length || 0), 0),
       });
     }
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -49,6 +56,29 @@ export default function DashboardPage() {
       activeSubscriptions: subscriptions.filter(s => s.is_active).length,
     });
   }, [progressList, subscriptions]);
+
+  if (isLoading) {
+    return (
+      <div className="max-w-6xl mx-auto space-y-8">
+        <Skeleton variant="card" className="h-32 w-full" />
+        <div>
+          <Skeleton variant="title" className="w-40 mb-4" />
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Skeleton count={3} variant="card" className="h-32" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <Skeleton count={5} variant="card" className="h-24" />
+        </div>
+        <div>
+          <Skeleton variant="title" className="w-48 mb-4" />
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <Skeleton count={5} variant="card" className="h-32" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
@@ -62,7 +92,7 @@ export default function DashboardPage() {
 
       {/* Featured Novels */}
       <div>
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">📚 นิยายแนะนำ</h2>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4"><Library size={20} className="inline" /> นิยายแนะนำ</h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {FEATURED_NOVELS.map(novel => (
             <Link
@@ -134,8 +164,8 @@ export default function DashboardPage() {
             href="/app/reader"
             className="group bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-all hover:-translate-y-1"
           >
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-2xl mb-3 group-hover:scale-110 transition-transform">
-              📖
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+              <BookOpen size={24} className="text-white" />
             </div>
             <h3 className="font-semibold text-gray-900 dark:text-white">อ่านนิยาย</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">เลือกนิยายที่ต้องการอ่าน</p>
@@ -144,8 +174,8 @@ export default function DashboardPage() {
             href="/app/library"
             className="group bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-all hover:-translate-y-1"
           >
-            <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center text-2xl mb-3 group-hover:scale-110 transition-transform">
-              📚
+            <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+              <Library size={24} className="text-white" />
             </div>
             <h3 className="font-semibold text-gray-900 dark:text-white">ไลบรารี</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">ดูนิยายที่บันทึกไว้</p>
@@ -154,8 +184,8 @@ export default function DashboardPage() {
             href="/app/terminology"
             className="group bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-all hover:-translate-y-1"
           >
-            <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center text-2xl mb-3 group-hover:scale-110 transition-transform">
-              📝
+            <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+              <FileText size={24} className="text-white" />
             </div>
             <h3 className="font-semibold text-gray-900 dark:text-white">คำศัพท์</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">จัดการคำศัพท์ที่ใช้</p>
@@ -165,8 +195,8 @@ export default function DashboardPage() {
             href="/app/chapters"
             className="group bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-all hover:-translate-y-1"
           >
-            <div className="w-12 h-12 bg-gradient-to-br from-teal-500 to-teal-600 rounded-xl flex items-center justify-center text-2xl mb-3 group-hover:scale-110 transition-transform">
-              🔔
+            <div className="w-12 h-12 bg-gradient-to-br from-teal-500 to-teal-600 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+              <Bell size={24} className="text-white" />
             </div>
             <h3 className="font-semibold text-gray-900 dark:text-white">ติดตาม</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">จัดการการติดตามนิยาย</p>
@@ -175,8 +205,8 @@ export default function DashboardPage() {
             href="/app/settings"
             className="group bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-all hover:-translate-y-1"
           >
-            <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center text-2xl mb-3 group-hover:scale-110 transition-transform">
-              ⚙️
+            <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+              <Settings size={24} className="text-white" />
             </div>
             <h3 className="font-semibold text-gray-900 dark:text-white">การตั้งค่า</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">ปรับแต่งการใช้งาน</p>
@@ -235,7 +265,7 @@ export default function DashboardPage() {
 
       {/* Tips */}
       <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-6 border border-blue-200 dark:border-blue-800">
-        <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">💡 เคล็ดลับ</h3>
+        <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2"><Lightbulb size={16} className="inline" /> เคล็ดลับ</h3>
         <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
           <li>• เลือกนิยายจากรายการแนะนำแล้วเริ่มอ่านได้ทันที</li>
           <li>• ปรับแก้คำแปลตัวละครในหน้าคำศัพท์เพื่อให้แปลสอดคล้องตลอดเรื่อง</li>

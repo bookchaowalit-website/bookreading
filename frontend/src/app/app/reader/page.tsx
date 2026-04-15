@@ -2,19 +2,37 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useSearchParams, useRouter } from 'next/navigation';
 import api, { aiApi, novelApi, chapterApi, translationApi, ExtractedTerm, Chapter as DbChapter, Novel } from '@/lib/api';
 import { FEATURED_NOVELS, getNovelById, FeaturedNovel } from '@/lib/novels';
-import ReadingProgressTracker from '@/components/ReadingProgressTracker';
-import AddBookmarkButton from '@/components/AddBookmarkButton';
-import TranslationFeedbackForm from '@/components/TranslationFeedbackForm';
-import StarRating from '@/components/StarRating';
+import ReadingProgressBar from '@/components/ReadingProgressBar';
 import { useTranslationFeedback } from '@/hooks/useTranslationFeedback';
+import { getErrorDisplay } from '@/lib/translationErrors';
 import { useCurrentReadingSession, useBookmarks } from '@/hooks/useReadingProgress';
 import { Bookmark } from '@/lib/types/features';
 
+// Dynamic imports for heavy/secondary components
+const ReadingProgressTracker = dynamic(() => import('@/components/ReadingProgressTracker'), {
+  ssr: false,
+  loading: () => <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />,
+});
+const AddBookmarkButton = dynamic(() => import('@/components/AddBookmarkButton'), {
+  ssr: false,
+  loading: () => <div className="w-8 h-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />,
+});
+const TranslationFeedbackForm = dynamic(() => import('@/components/TranslationFeedbackForm'), {
+  ssr: false,
+});
+const StarRating = dynamic(() => import('@/components/StarRating'), {
+  ssr: false,
+  loading: () => <div className="w-32 h-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />,
+});
+
 type ViewMode = 'original' | 'translated' | 'sideBySide';
 type FontSize = 'small' | 'medium' | 'large' | 'xlarge';
+type FontFamily = 'sarabun' | 'noto' | 'inter' | 'system';
+type LineSpacing = 'tight' | 'normal' | 'relaxed' | 'loose';
 type AIModel = 'gpt-4o' | 'gpt-4o-mini' | 'gpt-4-turbo' | 'gemini-1.5-pro' | 'gemini-2.0-flash';
 
 interface Chapter {
@@ -24,6 +42,7 @@ interface Chapter {
   url: string;
   content: string;
   translated?: string;
+  isTranslated?: boolean;
   id?: string;
   translationQuality?: {
     grade: string;
@@ -54,7 +73,19 @@ function formatContent(content: string): string[] {
 }
 
 // Component to render formatted content
-function ContentRenderer({ content, fontSize }: { content: string; fontSize: FontSize }) {
+function ContentRenderer({
+  content,
+  fontSize,
+  fontFamily = 'sarabun',
+  lineSpacing = 'normal',
+  maxWidth = 768,
+}: {
+  content: string;
+  fontSize: FontSize;
+  fontFamily?: FontFamily;
+  lineSpacing?: LineSpacing;
+  maxWidth?: number;
+}) {
   const paragraphs = formatContent(content);
 
   const fontSizeClasses = {
@@ -64,15 +95,37 @@ function ContentRenderer({ content, fontSize }: { content: string; fontSize: Fon
     xlarge: 'text-xl',
   };
 
-  const lineHeightClasses = {
-    small: 'leading-relaxed',
-    medium: 'leading-[1.9]',
-    large: 'leading-[2.1]',
-    xlarge: 'leading-[2.4]',
+  const fontFamilyClasses = {
+    sarabun: 'font-sans',
+    noto: 'font-sans',
+    inter: 'font-sans',
+    system: 'font-sans',
+  };
+
+  const fontFamilyStyles = {
+    sarabun: { fontFamily: 'var(--font-sarabun)' },
+    noto: { fontFamily: 'var(--font-sarabun)' },
+    inter: { fontFamily: 'var(--font-sarabun)' },
+    system: { fontFamily: 'system-ui, -apple-system, sans-serif' },
+  };
+
+  const lineSpacingValues = {
+    tight: '1.6',
+    normal: '1.9',
+    relaxed: '2.2',
+    loose: '2.6',
   };
 
   return (
-    <div className={`novel-content ${fontSizeClasses[fontSize]} ${lineHeightClasses[fontSize]} text-gray-800 dark:text-gray-200`}>
+    <div
+      className={`novel-content ${fontSizeClasses[fontSize]} text-gray-800 dark:text-gray-200`}
+      style={{
+        ...fontFamilyStyles[fontFamily],
+        lineHeight: lineSpacingValues[lineSpacing],
+        maxWidth: `${maxWidth}px`,
+        margin: '0 auto',
+      }}
+    >
       {paragraphs.map((paragraph, index) => {
         const isDialogue = paragraph.startsWith('"') || paragraph.startsWith('"') ||
           paragraph.startsWith('「') || paragraph.startsWith("'");
@@ -104,11 +157,18 @@ export default function ReaderPage() {
   const [isTranslating, setIsTranslating] = useState(false);
   const [translateProgress, setTranslateProgress] = useState(0);
   const [terminology, setTerminology] = useState<ExtractedTerm[]>([]);
-  const [viewMode, setViewMode] = useState<ViewMode>('translated');
+  const [viewMode, setViewMode] = useState<ViewMode>('original');
   const [fontSize, setFontSize] = useState<FontSize>('medium');
+  const [fontFamily, setFontFamily] = useState<FontFamily>('sarabun');
+  const [lineSpacing, setLineSpacing] = useState<LineSpacing>('normal');
+  const [textWidth, setTextWidth] = useState<number>(768); // max-width in pixels
   const [showChapterList, setShowChapterList] = useState(false);
   const [readingProgress, setReadingProgress] = useState(0);
+  const [currentChapterForNav, setCurrentChapterForNav] = useState(1);
+  const [totalChaptersForNav, setTotalChaptersForNav] = useState(0);
   const [showNovelSelector, setShowNovelSelector] = useState(false);
+  const [customNovelUrl, setCustomNovelUrl] = useState('');
+  const [isLoadingCustomNovel, setIsLoadingCustomNovel] = useState(false);
   const [selectedModel, setSelectedModel] = useState<AIModel>('gpt-4o');
   const [showRefineModal, setShowRefineModal] = useState(false);
   const [isRefining, setIsRefining] = useState(false);
@@ -137,14 +197,21 @@ export default function ReaderPage() {
     if (settings) {
       const parsed = JSON.parse(settings);
       setFontSize(parsed.fontSize || 'medium');
-      setViewMode(parsed.viewMode || 'translated');
+      setFontFamily(parsed.fontFamily || 'sarabun');
+      setLineSpacing(parsed.lineSpacing || 'normal');
+      setTextWidth(parsed.textWidth || 768);
     }
   }, []);
 
   // Save settings
   useEffect(() => {
-    localStorage.setItem('readerSettings', JSON.stringify({ fontSize, viewMode }));
-  }, [fontSize, viewMode]);
+    localStorage.setItem('readerSettings', JSON.stringify({
+      fontSize,
+      fontFamily,
+      lineSpacing,
+      textWidth,
+    }));
+  }, [fontSize, fontFamily, lineSpacing, textWidth]);
 
   // Track reading progress
   useEffect(() => {
@@ -226,6 +293,7 @@ export default function ReaderPage() {
               url: ch.source_url,
               content: ch.original_content || '',
               translated: ch.content || undefined,
+              isTranslated: ch.is_translated || false,
               id: ch.id,
             })),
             currentChapterIndex: initialChapterIndex,
@@ -337,6 +405,69 @@ export default function ReaderPage() {
     router.push(`/app/chapters?novel=${novel.id}`);
   };
 
+  const handleAddCustomNovel = async () => {
+    if (!customNovelUrl.trim()) return;
+
+    setIsLoadingCustomNovel(true);
+    setError('');
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/novels', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          url: customNovelUrl.trim(),
+          source_lang: 'zh',
+          target_lang: 'th',
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to add novel');
+      }
+
+      const { novel_id, title, total_chapters } = data.data;
+
+      // Add to localStorage library
+      const savedLibrary = JSON.parse(localStorage.getItem('novelLibrary') || '[]');
+      const existingIndex = savedLibrary.findIndex((n: any) => n.novelId === novel_id || n.url === customNovelUrl);
+      if (existingIndex >= 0) {
+        savedLibrary[existingIndex] = {
+          ...savedLibrary[existingIndex],
+          title: title || savedLibrary[existingIndex].title,
+        };
+      } else {
+        savedLibrary.push({
+          id: novel_id,
+          novelId: novel_id,
+          url: customNovelUrl,
+          title: title || 'Unknown Novel',
+          author: 'Unknown Author',
+          chapterNumber: 1,
+          totalChapters: total_chapters || 0,
+          savedAt: Date.now(),
+          lastReadAt: Date.now(),
+          readingProgress: 0,
+        });
+      }
+      localStorage.setItem('novelLibrary', JSON.stringify(savedLibrary));
+
+      // Clear input and navigate to chapters
+      setCustomNovelUrl('');
+      router.push(`/app/chapters?novel=${novel_id}`);
+    } catch (err: any) {
+      setError(err.message || 'Failed to add novel. Please check the URL.');
+    } finally {
+      setIsLoadingCustomNovel(false);
+    }
+  };
+
   const handleTranslate = async () => {
     if (!novelData || novelData.chapters.length === 0) return;
 
@@ -364,6 +495,7 @@ export default function ReaderPage() {
             };
             return { ...prev, chapters: updatedChapters };
           });
+          // Show Thai tab since this chapter already has a saved translation
           setViewMode('translated');
           setIsTranslating(false);
           return; // Exit early, no need to translate
@@ -432,7 +564,7 @@ export default function ReaderPage() {
       clearInterval(progressInterval);
       setTranslateProgress(100);
 
-      // Update chapter with translation
+      // Update chapter with translation in local state
       setNovelData(prev => {
         if (!prev) return null;
         const updatedChapters = [...prev.chapters];
@@ -448,25 +580,50 @@ export default function ReaderPage() {
         return { ...prev, chapters: updatedChapters };
       });
 
-      // Save to database if chapter has ID
+      // Save translation to backend - this is the critical step for persistence
       if (currentChapter.id) {
         try {
-          // Update chapter in database with translated content
-          await chapterApi.translateChapter(
-            currentChapter.id,
-            'th',
-            true // use context
-          );
-          console.log('Translation saved to database');
+          const response = await fetch(`/api/chapters/translate?id=${currentChapter.id}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+              target_lang: 'th',
+              use_context: true,
+              translated_text: result.translated_text,
+              model_used: result.model_used || 'unknown'
+            })
+          });
+          if (response.ok) {
+            const data = await response.json();
+            const savedChapter = data.data;
+            // Update local state with the backend's confirmed saved version
+            setNovelData(prev => {
+              if (!prev) return null;
+              const updatedChapters = [...prev.chapters];
+              updatedChapters[prev.currentChapterIndex] = {
+                ...updatedChapters[prev.currentChapterIndex],
+                translated: savedChapter?.content || result.translated_text,
+              };
+              return { ...prev, chapters: updatedChapters };
+            });
+            console.log('✅ Translation saved to database');
+          } else {
+            console.warn('⚠️ Backend save failed, translation still works locally');
+          }
         } catch (err) {
           console.error('Failed to save translation to database:', err);
-          // Don't show error to user, translation still works locally
         }
       }
 
+      // Don't auto-switch to translated - user clicks the tab to switch
+      // But since they clicked the translate tab/button, switch to Thai
       setViewMode('translated');
     } catch (err) {
-      setError('Translation failed. Please try again.');
+      const errorInfo = getErrorDisplay(err);
+      setError(`${errorInfo.title}: ${errorInfo.message}\n\n💡 ${errorInfo.suggestion}`);
     } finally {
       setIsTranslating(false);
     }
@@ -552,11 +709,35 @@ export default function ReaderPage() {
 
     const targetChapter = novelData.chapters[index];
 
+    // Smart: if already translated, show Thai; otherwise show original
+    if (targetChapter.translated || targetChapter.isTranslated) {
+      setViewMode('translated');
+    } else {
+      setViewMode('original');
+    }
+
     // If chapter content is empty, fetch it on-demand
     if (!targetChapter.content) {
       setIsLoadingChapter(true);
       try {
         const result = await aiApi.fetchChapterContent(targetChapter.url);
+
+        // Save original content to DB so it persists
+        if (targetChapter.id && result.content) {
+          fetch(`/api/chapters/update?id=${targetChapter.id}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+              original_content: result.content,
+              word_count: result.content.length,
+              is_scraped: true,
+            })
+          }).catch(err => console.warn('Failed to save chapter content to DB:', err));
+        }
+
         setNovelData(prev => {
           if (!prev) return null;
           const updatedChapters = [...prev.chapters];
@@ -580,11 +761,6 @@ export default function ReaderPage() {
 
     if (contentRef.current) {
       contentRef.current.scrollTop = 0;
-    }
-
-    // Auto-translate if in translated mode
-    if (viewMode === 'translated' && !novelData.chapters[index].translated) {
-      setTimeout(() => handleTranslate(), 100);
     }
 
     // Save progress
@@ -742,6 +918,18 @@ export default function ReaderPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-4">
+      {/* Reading Progress Bar */}
+      {readingProgress > 0 && (
+        <div className="sticky top-0 z-20 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800 px-4 py-2 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-3">
+            <div className="h-1.5 w-32 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-blue-600 to-purple-600 transition-all" style={{ width: `${readingProgress}%` }} />
+            </div>
+            <span className="text-gray-500 dark:text-gray-400">{Math.round(readingProgress)}% ของบทนี้</span>
+          </div>
+        </div>
+      )}
+
       {/* Novel Selector */}
       {!novelData && !isLoading && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
@@ -789,6 +977,32 @@ export default function ReaderPage() {
               <p>ยังไม่มีนิยายในระบบ</p>
             </div>
           )}
+
+          {/* Custom URL Input */}
+          <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+              ➕ เพิ่มนิยายจาก URL
+            </h3>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={customNovelUrl}
+                onChange={(e) => setCustomNovelUrl(e.target.value)}
+                placeholder="https://www.piaotia.com/html/6/6760/"
+                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-800 dark:text-white text-sm"
+              />
+              <button
+                onClick={handleAddCustomNovel}
+                disabled={isLoadingCustomNovel}
+                className="px-4 py-2 bg-gradient-to-r from-green-600 to-teal-600 text-white rounded-lg font-medium hover:opacity-90 disabled:opacity-50 text-sm whitespace-nowrap"
+              >
+                {isLoadingCustomNovel ? 'กำลังเพิ่ม...' : 'เพิ่มนิยาย'}
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              รองรับ: piaotia.com, qidian.com และเว็บไซต์นิยายจีนอื่นๆ
+            </p>
+          </div>
         </div>
       )}
 
@@ -981,13 +1195,50 @@ export default function ReaderPage() {
               </select>
             </div>
 
-            {/* Save */}
-            <button
-              onClick={saveToLibrary}
-              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              💾 บันทึก
-            </button>
+            {/* Font Family */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500 dark:text-gray-400">ฟอนต์:</span>
+              <select
+                value={fontFamily}
+                onChange={(e) => setFontFamily(e.target.value as FontFamily)}
+                className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-800 dark:text-white"
+              >
+                <option value="sarabun">Sarabun</option>
+                <option value="noto">Noto Sans</option>
+                <option value="inter">Inter</option>
+                <option value="system">System</option>
+              </select>
+            </div>
+
+            {/* Line Spacing */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500 dark:text-gray-400">บรรทัด:</span>
+              <select
+                value={lineSpacing}
+                onChange={(e) => setLineSpacing(e.target.value as LineSpacing)}
+                className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-800 dark:text-white"
+              >
+                <option value="tight">ชิด</option>
+                <option value="normal">ปกติ</option>
+                <option value="relaxed">ห่าง</option>
+                <option value="loose">ห่างมาก</option>
+              </select>
+            </div>
+
+            {/* Text Width */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500 dark:text-gray-400">กว้าง:</span>
+              <input
+                type="range"
+                min="480"
+                max="1200"
+                step="40"
+                value={textWidth}
+                onChange={(e) => setTextWidth(Number(e.target.value))}
+                className="w-20 accent-blue-600"
+              />
+              <span className="text-xs text-gray-400 w-10">{textWidth}px</span>
+            </div>
           </div>
 
           {/* Content */}
@@ -1007,20 +1258,23 @@ export default function ReaderPage() {
                       <div className="sticky top-0 bg-gray-50 dark:bg-gray-700 py-2 mb-4 font-semibold text-gray-700 dark:text-gray-200 rounded px-3 text-sm">
                         🇨🇳 ต้นฉบับ
                       </div>
-                      <ContentRenderer content={originalContent} fontSize={fontSize} />
+                      <ContentRenderer content={originalContent} fontSize={fontSize} fontFamily={fontFamily} lineSpacing={lineSpacing} maxWidth={textWidth} />
                     </div>
                     <div>
                       <div className="sticky top-0 bg-blue-50 dark:bg-blue-900/30 py-2 mb-4 font-semibold text-blue-700 dark:text-blue-300 rounded px-3 text-sm">
                         🇹🇭 คำแปล
                       </div>
-                      <ContentRenderer content={translatedContent} fontSize={fontSize} />
+                      <ContentRenderer content={translatedContent} fontSize={fontSize} fontFamily={fontFamily} lineSpacing={lineSpacing} maxWidth={textWidth} />
                     </div>
                   </div>
                 ) : (
-                  <div className="max-w-3xl mx-auto">
+                  <div className="px-6 md:px-8" style={{ maxWidth: `${textWidth}px`, margin: '0 auto' }}>
                     <ContentRenderer
                       content={viewMode === 'original' ? originalContent : translatedContent || originalContent}
                       fontSize={fontSize}
+                      fontFamily={fontFamily}
+                      lineSpacing={lineSpacing}
+                      maxWidth={textWidth}
                     />
                   </div>
                 )}

@@ -23,12 +23,12 @@ interface ToastContextType {
 
 const ToastContext = createContext<ToastContextType>({
   toasts: [],
-  showToast: () => {},
-  success: () => {},
-  error: () => {},
-  warning: () => {},
-  info: () => {},
-  removeToast: () => {},
+  showToast: () => { },
+  success: () => { },
+  error: () => { },
+  warning: () => { },
+  info: () => { },
+  removeToast: () => { },
 });
 
 export function useToast() {
@@ -41,7 +41,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const showToast = useCallback((message: string, type: ToastType, duration = 3000) => {
     const id = Math.random().toString(36).substring(2, 9);
     const toast: Toast = { id, message, type, duration };
-    
+
     setToasts(prev => [...prev, toast]);
 
     // Auto-remove after duration
@@ -100,10 +100,12 @@ function ToastContainer() {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-[100] space-y-2 max-w-sm">
+    <div className="fixed bottom-4 right-4 z-[100] space-y-2 max-w-sm" role="status" aria-live="polite" aria-label="การแจ้งเตือน">
       {toasts.map((toast) => (
         <div
           key={toast.id}
+          role={toast.type === 'error' ? 'alert' : 'status'}
+          aria-live={toast.type === 'error' ? 'assertive' : 'polite'}
           className={`flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg animate-slide-in ${typeStyles[toast.type]}`}
         >
           <span className="text-lg font-bold">{typeIcons[toast.type]}</span>

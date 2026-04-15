@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useToast } from '@/providers/ToastProvider';
 import { offlineStorage, OfflineNovel } from '@/lib/offline-storage';
 import { epubGenerator } from '@/lib/epub-generator';
+import { WifiOff, BookOpen, Trash2 } from 'lucide-react';
 
 interface OfflineChapterData {
   chapterNumber: number;
@@ -89,7 +90,7 @@ export default function OfflinePage() {
     <div className="max-w-4xl mx-auto p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">📴 นิยายออฟไลน์</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white"><WifiOff size={24} className="inline" /> นิยายออฟไลน์</h1>
         <p className="text-gray-500 dark:text-gray-400 mt-1">
           นิยายที่ดาวน์โหลดไว้สำหรับอ่านแบบไม่ใช้อินเทอร์เน็ต
         </p>
@@ -117,7 +118,7 @@ export default function OfflinePage() {
       ) : offlineNovels.length === 0 ? (
         /* Empty State */
         <div className="text-center py-12 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700">
-          <div className="text-6xl mb-4">📴</div>
+          <div className="text-6xl mb-4"><WifiOff size={48} className="mx-auto text-gray-400" /></div>
           <p className="text-gray-500 dark:text-gray-400 font-medium">ยังไม่มีนิยายออฟไลน์</p>
           <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
             ไปที่หน้าไลบรารีเพื่อดาวน์โหลดนิยายสำหรับอ่านออฟไลน์
@@ -148,13 +149,13 @@ export default function OfflinePage() {
                     onClick={() => handleExportEpub(novel)}
                     className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition-colors flex items-center gap-2"
                   >
-                    📖 Export EPUB
+                    <BookOpen size={16} /> Export EPUB
                   </button>
                   <button
                     onClick={() => handleDeleteNovel(novel.novelId)}
                     className="px-3 py-2 bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm hover:bg-red-200 dark:hover:bg-red-900/30 transition-colors"
                   >
-                    🗑️ ลบ
+                    <Trash2 size={16} /> ลบ
                   </button>
                 </div>
               </div>

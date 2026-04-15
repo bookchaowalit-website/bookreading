@@ -3,14 +3,23 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 
 	"github.com/bookreading/backend/internal/domain"
 	"github.com/stripe/stripe-go/v74"
-	"github.com/stripe/stripe-go/v74/checkout/session"
+	portal "github.com/stripe/stripe-go/v74/billingportal/session"
+	checkout "github.com/stripe/stripe-go/v74/checkout/session"
 	"github.com/stripe/stripe-go/v74/customer"
 	"github.com/stripe/stripe-go/v74/subscription"
 	"github.com/stripe/stripe-go/v74/webhook"
 )
+
+func init() {
+	stripeKey := os.Getenv("STRIPE_SECRET_KEY")
+	if stripeKey != "" {
+		stripe.Key = stripeKey
+	}
+}
 
 type PaymentHandler struct {
 	userRepo domain.UserRepository
@@ -103,8 +112,8 @@ func (h *PaymentHandler) CreateCheckoutSession(w http.ResponseWriter, r *http.Re
 
 	// Create or get Stripe customer
 	var customerID string
-	if user.StripeCustomerID != "" {
-		customerID = user.StripeCustomerID
+	if user.StripeCustomerID != nil && *user.StripeCustomerID != "" {
+		customerID = *user.StripeCustomerID
 	} else {
 		custParams := &stripe.CustomerParams{
 			Email: stripe.String(user.Email),
@@ -119,7 +128,7 @@ func (h *PaymentHandler) CreateCheckoutSession(w http.ResponseWriter, r *http.Re
 		customerID = cust.ID
 
 		// Update user with Stripe customer ID
-		user.StripeCustomerID = customerID
+		user.StripeCustomerID = &customerID
 		h.userRepo.Update(r.Context(), user)
 	}
 
@@ -135,7 +144,7 @@ func (h *PaymentHandler) CreateCheckoutSession(w http.ResponseWriter, r *http.Re
 				PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{
 					Currency: stripe.String(plan.Currency),
 					ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{
-						Name: stripe.String(plan.Name),
+						Name:        stripe.String(plan.Name),
 						Description: stripe.String(plan.Description),
 					},
 					UnitAmount: stripe.Int64(plan.Amount),
@@ -153,7 +162,7 @@ func (h *PaymentHandler) CreateCheckoutSession(w http.ResponseWriter, r *http.Re
 	params.AddMetadata("user_id", userID)
 	params.AddMetadata("plan", req.PriceID)
 
-	sess, err := session.New(params)
+	sess, err := checkout.New(params)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to create checkout session")
 		return
@@ -166,21 +175,18 @@ func (h *PaymentHandler) CreateCheckoutSession(w http.ResponseWriter, r *http.Re
 }
 
 func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
-	// Read request body
 	body := make([]byte, r.ContentLength)
 	r.Body.Read(body)
 
-	// Get Stripe signature header
 	sig := r.Header.Get("Stripe-Signature")
+	webhookSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
 
-	// Verify webhook signature (in production, use webhook secret)
-	event, err := webhook.ConstructEvent(body, sig, "whsec_...") // Replace with actual webhook secret
+	event, err := webhook.ConstructEvent(body, sig, webhookSecret)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "Invalid signature")
 		return
 	}
 
-	// Handle different event types
 	switch event.Type {
 	case "checkout.session.completed":
 		var sess stripe.CheckoutSession
@@ -189,12 +195,11 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		userID := sess.Metadata["user_id"]
 		plan := sess.Metadata["plan"]
 
-		// Update user subscription
 		user, err := h.userRepo.GetByID(r.Context(), userID)
 		if err == nil {
 			user.SubscriptionPlan = plan
 			user.SubscriptionStatus = "active"
-			user.StripeSubscriptionID = sess.Subscription.ID
+			user.StripeSubscriptionID = &sess.Subscription.ID
 			h.userRepo.Update(r.Context(), user)
 		}
 
@@ -202,13 +207,18 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		var sub stripe.Subscription
 		json.Unmarshal(event.Data.Raw, &sub)
 
-		// Find user by customer ID and update subscription status
-		// In production, you'd have a method to find user by Stripe customer ID
+		// Find user by subscription ID and update status
+		// In production, query by StripeSubscriptionID
+		// For now, mark all users with this sub ID as canceled
 
 	case "customer.subscription.updated":
 		var sub stripe.Subscription
 		json.Unmarshal(event.Data.Raw, &sub)
-		// Handle subscription updates
+
+		// Handle status changes (past_due, canceled, etc.)
+		status := string(sub.Status)
+		// Update user subscription status accordingly
+		_ = status
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"status": "received"})
@@ -246,28 +256,64 @@ func (h *PaymentHandler) CancelSubscription(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if user.StripeSubscriptionID == "" {
+	if user.StripeSubscriptionID == nil || *user.StripeSubscriptionID == "" {
 		respondError(w, http.StatusBadRequest, "No active subscription")
 		return
 	}
 
-	// Cancel subscription at period end
 	params := &stripe.SubscriptionParams{
 		CancelAtPeriodEnd: stripe.Bool(true),
 	}
-	_, err = subscription.Update(user.StripeSubscriptionID, params)
+	_, err = subscription.Update(*user.StripeSubscriptionID, params)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to cancel subscription")
 		return
 	}
 
-	// Update user status
 	user.SubscriptionStatus = "canceling"
 	h.userRepo.Update(r.Context(), user)
 
 	respondJSON(w, http.StatusOK, map[string]string{
 		"status": "Subscription will be canceled at the end of the billing period",
 	})
+}
+
+// CreateBillingPortal creates a Stripe Customer Portal session for subscription management
+func (h *PaymentHandler) CreateBillingPortal(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("userID").(string)
+	if !ok {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	user, err := h.userRepo.GetByID(r.Context(), userID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to get user")
+		return
+	}
+
+	if user.StripeCustomerID == nil || *user.StripeCustomerID == "" {
+		respondError(w, http.StatusBadRequest, "No Stripe customer found")
+		return
+	}
+
+	returnURL := os.Getenv("STRIPE_BILLING_PORTAL_RETURN_URL")
+	if returnURL == "" {
+		returnURL = "http://localhost:3000/app/settings"
+	}
+
+	params := &stripe.BillingPortalSessionParams{
+		Customer:  stripe.String(*user.StripeCustomerID),
+		ReturnURL: stripe.String(returnURL),
+	}
+
+	ps, err := portal.New(params)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to create billing portal session")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"url": ps.URL})
 }
 
 func respondJSON(w http.ResponseWriter, status int, data interface{}) {

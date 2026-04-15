@@ -10,8 +10,8 @@ type User struct {
 	AvatarURL            string    `json:"avatar_url" db:"avatar_url"`
 	SubscriptionPlan     string    `json:"subscription_plan" db:"subscription_plan"`
 	SubscriptionStatus   string    `json:"subscription_status" db:"subscription_status"`
-	StripeCustomerID     string    `json:"-" db:"stripe_customer_id"`
-	StripeSubscriptionID string    `json:"-" db:"stripe_subscription_id"`
+	StripeCustomerID     *string   `json:"-" db:"stripe_customer_id"`
+	StripeSubscriptionID *string   `json:"-" db:"stripe_subscription_id"`
 	CreatedAt            time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt            time.Time `json:"updated_at" db:"updated_at"`
 }

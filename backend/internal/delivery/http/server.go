@@ -133,9 +133,11 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 	// Setup routes
 	mux := http.NewServeMux()
 
-	// Auth routes (public)
-	mux.HandleFunc("/api/auth/register", h.Register)
-	mux.HandleFunc("/api/auth/login", h.Login)
+	// Auth routes (public) - with stricter auth rate limiting (5 req/min)
+	mux.Handle("/api/auth/register", middleware.AuthRateLimitMiddleware(http.HandlerFunc(h.Register)))
+	mux.Handle("/api/auth/login", middleware.AuthRateLimitMiddleware(http.HandlerFunc(h.Login)))
+	mux.HandleFunc("/api/auth/logout", h.Logout)
+	mux.HandleFunc("/api/auth/refresh", h.AuthMiddleware(h.Refresh))
 
 	// Protected routes
 	mux.HandleFunc("/api/users/me", h.AuthMiddleware(h.GetMe))
@@ -187,17 +189,19 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 	mux.HandleFunc("/api/chapters", h.ListChapters)
 	mux.HandleFunc("/api/chapters/detail", h.GetChapter)
 	mux.HandleFunc("/api/chapters/by-number", h.GetChapterByNumber)
-	mux.HandleFunc("/api/chapters/translate", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/api/chapters/update", http.HandlerFunc(h.UpdateChapter))
+	// Chapter translation endpoint - with stricter rate limiting (10 req/min)
+	mux.Handle("/api/chapters/translate", middleware.TranslationRateLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			h.TranslateChapter(w, r)
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	})
+	})))
 
-	// Translation history routes (public for reading)
-	mux.HandleFunc("/api/translations/history", h.GetTranslationHistory)
-	mux.HandleFunc("/api/translations/cached", h.GetCachedTranslation)
+	// Translation history routes (public for reading) - with stricter rate limiting (10 req/min)
+	mux.Handle("/api/translations/history", middleware.TranslationRateLimitMiddleware(http.HandlerFunc(h.GetTranslationHistory)))
+	mux.Handle("/api/translations/cached", middleware.TranslationRateLimitMiddleware(http.HandlerFunc(h.GetCachedTranslation)))
 
 	// Novel subscription routes
 	mux.HandleFunc("/api/subscriptions", func(w http.ResponseWriter, r *http.Request) {
@@ -243,8 +247,8 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 	})
 	mux.HandleFunc("/api/bookmarks/novel", h.GetNovelBookmarks)
 
-	// Translation feedback routes
-	mux.HandleFunc("/api/feedback", func(w http.ResponseWriter, r *http.Request) {
+	// Translation feedback routes - with stricter rate limiting (10 req/min)
+	mux.Handle("/api/feedback", middleware.TranslationRateLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			h.GetFeedback(w, r)
@@ -253,9 +257,9 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	})
-	mux.HandleFunc("/api/feedback/chapter", h.GetChapterFeedback)
-	mux.HandleFunc("/api/feedback/quality-score", h.GetChapterQualityScore)
+	})))
+	mux.Handle("/api/feedback/chapter", middleware.TranslationRateLimitMiddleware(http.HandlerFunc(h.GetChapterFeedback)))
+	mux.Handle("/api/feedback/quality-score", middleware.TranslationRateLimitMiddleware(http.HandlerFunc(h.GetChapterQualityScore)))
 
 	// API Key management routes (authenticated)
 	mux.HandleFunc("/api/settings/api-keys", func(w http.ResponseWriter, r *http.Request) {
@@ -271,8 +275,14 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 		}
 	})
 
-	// Payment routes (TODO: implement PaymentWebhook handler)
-	// mux.HandleFunc("/api/payments/stripe/webhook", h.PaymentWebhook)
+	// Payment routes
+	paymentHandler := NewPaymentHandler(deps.UserRepo)
+	mux.HandleFunc("/api/payments/stripe/webhook", paymentHandler.HandleWebhook)
+	mux.HandleFunc("/api/payments/plans", h.AuthMiddleware(paymentHandler.GetPricingPlans))
+	mux.HandleFunc("/api/payments/stripe/checkout", h.AuthMiddleware(paymentHandler.CreateCheckoutSession))
+	mux.HandleFunc("/api/payments/stripe/billing-portal", h.AuthMiddleware(paymentHandler.CreateBillingPortal))
+	mux.HandleFunc("/api/payments/stripe/cancel", h.AuthMiddleware(paymentHandler.CancelSubscription))
+	mux.HandleFunc("/api/payments/subscription", h.AuthMiddleware(paymentHandler.GetSubscriptionStatus))
 
 	// Health check (basic - just checks if server is running)
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {

@@ -7,6 +7,7 @@ import { novelApi, chapterApi, aiApi, Chapter, Novel } from '@/lib/api';
 import { FEATURED_NOVELS, getNovelById, FeaturedNovel } from '@/lib/novels';
 import SubscribeButton from '@/components/SubscribeButton';
 import { useNovelSubscriptions, useNovelSubscriptionStatus } from '@/hooks/useSubscriptions';
+import { Library, BookOpen, Rocket } from 'lucide-react';
 
 interface ChapterWithStatus extends Chapter {
   is_loaded: boolean;
@@ -174,7 +175,7 @@ export default function ChaptersPage() {
       {!selectedNovel && !isLoading && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-            📚 เลือกนิยายที่ต้องการอ่าน
+            <Library size={20} className="inline" /> เลือกนิยายที่ต้องการอ่าน
           </h2>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -314,7 +315,7 @@ export default function ChaptersPage() {
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                📖 เลือกบทที่ต้องการอ่าน
+                <BookOpen size={20} className="inline" /> เลือกบทที่ต้องการอ่าน
               </h3>
               <div className="text-sm text-gray-500 dark:text-gray-400">
                 บท {startChapter} - {endChapter} จาก {totalChapters} บท
@@ -471,7 +472,7 @@ export default function ChaptersPage() {
                 }}
                 className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-semibold hover:opacity-90 transition-opacity"
               >
-                🚀 เริ่มอ่าน
+                <Rocket size={16} className="inline" /> เริ่มอ่าน
               </button>
             </div>
           </div>

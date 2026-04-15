@@ -35,6 +35,9 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       HTTP_PORT: "8080"
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      STRIPE_BILLING_PORTAL_RETURN_URL: ${STRIPE_BILLING_PORTAL_RETURN_URL:-http://localhost:3000/app/settings}
     depends_on:
       postgres:
         condition: service_healthy
@@ -85,6 +88,7 @@ services:
     environment:
       NEXT_PUBLIC_AI_SERVICE_URL: http://localhost:8000
       NEXT_PUBLIC_BACKEND_URL: http://localhost:8888
+      BACKEND_URL: http://backend:8080
     depends_on:
       - backend
       - ai-service
@@ -95,6 +99,25 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  backup:
+    image: postgres:15-alpine
+    container_name: bookreading-backup
+    profiles: ["backup"]
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /backups && pg_dump -h postgres -U bookreading -d bookreading | gzip > /backups/bookreading_$$(date +%Y%m%d_%H%M%S).sql.gz
+    volumes:
+      - ./backups:/backups
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bookreading-network
 
 networks:
   bookreading-network:

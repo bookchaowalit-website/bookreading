@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import TranslationFeedbackForm from '@/components/TranslationFeedbackForm';
 import StarRating from '@/components/StarRating';
+import Skeleton from '@/components/Skeleton';
 import { useTranslationFeedback } from '@/hooks/useTranslationFeedback';
+import { FileText, Trash2, BarChart3, User, Search, Plus } from 'lucide-react';
 
 interface Term {
   original: string;
@@ -13,6 +15,7 @@ interface Term {
 }
 
 export default function TerminologyPage() {
+  const [isLoading, setIsLoading] = useState(true);
   const [terms, setTerms] = useState<Term[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -83,39 +86,53 @@ export default function TerminologyPage() {
   );
 
   const termTypes = [
-    { value: 'character', label: '👤 ตัวละคร', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
+    { value: 'character', label: (<><User size={12} className="inline" /> ตัวละคร</>), color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
     { value: 'location', label: '📍 สถานที่', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' },
     { value: 'item', label: '⚔️ ไอเท็ม', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' },
     { value: 'technique', label: '⚡ ท่าไม้ตาย', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' },
     { value: 'organization', label: '🏛️ องค์กร', color: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300' },
-    { value: 'other', label: '📝 อื่นๆ', color: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' },
+    { value: 'other', label: (<><FileText size={12} className="inline" /> อื่นๆ</>), color: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' },
   ];
+
+  if (isLoading) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6">
+        <Skeleton variant="title" className="w-40" />
+        <Skeleton variant="text" className="w-full h-10" />
+        <Skeleton count={5} variant="table-row" className="h-16" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">📝 คำศัพท์</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white"><FileText size={24} className="inline" /> คำศัพท์</h1>
           <p className="text-gray-500 dark:text-gray-400">จัดการคำศัพท์สำหรับการแปล {terms.length} คำ</p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
           className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
         >
-          + เพิ่มคำศัพท์
+          <Plus size={18} />
+          เพิ่มคำศัพท์
         </button>
       </div>
 
       {/* Search */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="🔍 ค้นหาคำศัพท์..."
-          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-white"
-        />
+        <div className="relative">
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="ค้นหาคำศัพท์..."
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-white"
+          />
+        </div>
       </div>
 
       {/* Terms List */}
@@ -161,7 +178,7 @@ export default function TerminologyPage() {
                         onClick={() => handleDeleteTerm(index)}
                         className="p-1 text-gray-400 hover:text-red-500 transition-colors"
                       >
-                        🗑️
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </div>
@@ -179,7 +196,7 @@ export default function TerminologyPage() {
           className="w-full p-4 text-left flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
         >
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">📊 คุณภาพคำศัพท์และคำแปล</h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white"><BarChart3 size={20} className="inline" /> คุณภาพคำศัพท์และคำแปล</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">ให้คะแนนและแสดงความคิดเห็นเกี่ยวกับคุณภาพการแปล</p>
           </div>
           <svg

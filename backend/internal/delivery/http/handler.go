@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -85,13 +86,79 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Debug logging
+	log.Printf("[LOGIN DEBUG] Attempting login for email: %s", input.Email)
+
 	result, err := h.userUsecase.Login(r.Context(), input)
 	if err != nil {
+		log.Printf("[LOGIN DEBUG] Login failed for %s: %v", input.Email, err)
 		h.respond(w, http.StatusUnauthorized, Response{Error: err.Error()})
 		return
 	}
 
+	// Set HTTP-only cookie
+	h.setAuthCookie(w, result.Token)
+	log.Printf("[LOGIN DEBUG] Login successful for %s", input.Email)
+
 	h.respond(w, http.StatusOK, Response{Success: true, Data: result})
+}
+
+// Refresh rotates the token to extend the session
+func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
+	claims, ok := r.Context().Value("claims").(*usecase.Claims)
+	if !ok {
+		h.respond(w, http.StatusUnauthorized, Response{Error: "Invalid session"})
+		return
+	}
+
+	user, err := h.userUsecase.GetByID(r.Context(), claims.UserID)
+	if err != nil {
+		h.respond(w, http.StatusUnauthorized, Response{Error: "User not found"})
+		return
+	}
+
+	token, err := h.userUsecase.GenerateToken(user)
+	if err != nil {
+		h.respond(w, http.StatusInternalServerError, Response{Error: "Failed to refresh token"})
+		return
+	}
+
+	h.setAuthCookie(w, token)
+	h.respond(w, http.StatusOK, Response{Success: true, Data: map[string]string{"message": "Token refreshed"}})
+}
+
+// Logout clears the auth cookie
+func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	h.clearAuthCookie(w)
+	h.respond(w, http.StatusOK, Response{Success: true, Data: map[string]string{"message": "Logged out"}})
+}
+
+// setAuthCookie sets an HTTP-only, secure cookie with the JWT token
+func (h *Handler) setAuthCookie(w http.ResponseWriter, token string) {
+	cookie := &http.Cookie{
+		Name:     "auth_token",
+		Value:    token,
+		Path:     "/",
+		MaxAge:   604800, // 7 days
+		HttpOnly: true,
+		Secure:   false, // Set to true in production with HTTPS
+		SameSite: http.SameSiteLaxMode,
+	}
+	http.SetCookie(w, cookie)
+}
+
+// clearAuthCookie removes the auth cookie
+func (h *Handler) clearAuthCookie(w http.ResponseWriter) {
+	cookie := &http.Cookie{
+		Name:     "auth_token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteLaxMode,
+	}
+	http.SetCookie(w, cookie)
 }
 
 func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
@@ -396,6 +463,67 @@ func (h *Handler) GetChapter(w http.ResponseWriter, r *http.Request) {
 	h.respond(w, http.StatusOK, Response{Success: true, Data: chapter})
 }
 
+func (h *Handler) UpdateChapter(w http.ResponseWriter, r *http.Request) {
+	chapterID := r.URL.Query().Get("id")
+	if chapterID == "" {
+		h.respond(w, http.StatusBadRequest, Response{Error: "id is required"})
+		return
+	}
+
+	var input struct {
+		Title           *string `json:"title"`
+		OriginalTitle   *string `json:"original_title"`
+		SourceURL       *string `json:"source_url"`
+		Content         *string `json:"content"`
+		OriginalContent *string `json:"original_content"`
+		WordCount       *int    `json:"word_count"`
+		IsTranslated    *bool   `json:"is_translated"`
+		IsScraped       *bool   `json:"is_scraped"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		h.respond(w, http.StatusBadRequest, Response{Error: "Invalid request body"})
+		return
+	}
+
+	chapter, err := h.chapterUsecase.GetChapter(r.Context(), chapterID)
+	if err != nil || chapter == nil {
+		h.respond(w, http.StatusNotFound, Response{Error: "Chapter not found"})
+		return
+	}
+
+	if input.Title != nil {
+		chapter.Title = *input.Title
+	}
+	if input.OriginalTitle != nil {
+		chapter.OriginalTitle = *input.OriginalTitle
+	}
+	if input.SourceURL != nil {
+		chapter.SourceURL = *input.SourceURL
+	}
+	if input.Content != nil {
+		chapter.Content = *input.Content
+	}
+	if input.OriginalContent != nil {
+		chapter.OriginalContent = *input.OriginalContent
+	}
+	if input.WordCount != nil {
+		chapter.WordCount = *input.WordCount
+	}
+	if input.IsTranslated != nil {
+		chapter.IsTranslated = *input.IsTranslated
+	}
+	if input.IsScraped != nil {
+		chapter.IsScraped = *input.IsScraped
+	}
+
+	if err := h.chapterUsecase.UpdateChapter(r.Context(), chapter); err != nil {
+		h.respond(w, http.StatusInternalServerError, Response{Error: "Failed to update chapter"})
+		return
+	}
+
+	h.respond(w, http.StatusOK, Response{Success: true, Data: chapter})
+}
+
 func (h *Handler) GetChapterByNumber(w http.ResponseWriter, r *http.Request) {
 	novelID := r.URL.Query().Get("novel_id")
 	if novelID == "" {
@@ -426,8 +554,10 @@ func (h *Handler) TranslateChapter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		TargetLang string `json:"target_lang"`
-		UseContext bool   `json:"use_context"`
+		TargetLang     string `json:"target_lang"`
+		UseContext     bool   `json:"use_context"`
+		TranslatedText string `json:"translated_text"`
+		ModelUsed      string `json:"model_used"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		h.respond(w, http.StatusBadRequest, Response{Error: "Invalid request body"})
@@ -438,6 +568,31 @@ func (h *Handler) TranslateChapter(w http.ResponseWriter, r *http.Request) {
 		input.TargetLang = "th"
 	}
 
+	// If translated_text is provided, save it directly (from frontend translation)
+	if input.TranslatedText != "" {
+		chapter, err := h.chapterUsecase.GetChapter(r.Context(), chapterID)
+		if err != nil {
+			h.respond(w, http.StatusInternalServerError, Response{Error: err.Error()})
+			return
+		}
+		if chapter == nil {
+			h.respond(w, http.StatusNotFound, Response{Error: "Chapter not found"})
+			return
+		}
+
+		// Save the translated text directly
+		chapter.Content = input.TranslatedText
+		chapter.IsTranslated = true
+		if err := h.chapterUsecase.SaveTranslatedContent(r.Context(), chapterID, input.TranslatedText); err != nil {
+			h.respond(w, http.StatusInternalServerError, Response{Error: "Failed to save translation"})
+			return
+		}
+
+		h.respond(w, http.StatusOK, Response{Success: true, Data: chapter})
+		return
+	}
+
+	// Otherwise, do server-side translation
 	chapter, err := h.chapterUsecase.TranslateChapter(r.Context(), chapterID, input.TargetLang, input.UseContext)
 	if err != nil {
 		h.respond(w, http.StatusInternalServerError, Response{Error: err.Error()})
@@ -514,16 +669,30 @@ func (h *Handler) GetCachedTranslation(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		var tokenString string
+
+		// Try Authorization header first (for API clients)
 		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			h.respond(w, http.StatusUnauthorized, Response{Error: "Authorization header required"})
+		if authHeader != "" {
+			tokenString = strings.TrimPrefix(authHeader, "Bearer ")
+		}
+
+		// Fall back to HTTP-only cookie (for browser clients)
+		if tokenString == "" {
+			cookie, err := r.Cookie("auth_token")
+			if err == nil {
+				tokenString = cookie.Value
+			}
+		}
+
+		if tokenString == "" {
+			h.respond(w, http.StatusUnauthorized, Response{Error: "Authorization required"})
 			return
 		}
 
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		claims, err := h.userUsecase.ValidateToken(tokenString)
 		if err != nil {
-			h.respond(w, http.StatusUnauthorized, Response{Error: "Invalid token"})
+			h.respond(w, http.StatusUnauthorized, Response{Error: "Invalid or expired token"})
 			return
 		}
 

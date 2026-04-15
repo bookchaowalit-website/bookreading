@@ -2,6 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
+import {
+  CheckCircle2, XCircle, FileText, Search, BarChart3, AlertTriangle,
+  Lightbulb, BookOpen, Library, Target, Moon, Sun, RefreshCw,
+  Loader2, ChevronLeft, ChevronRight, ThumbsUp, ThumbsDown,
+  Edit3, ArrowRight
+} from 'lucide-react';
 
 interface ReviewItem {
   id: string;
@@ -162,7 +168,7 @@ export default function ReviewQueuePage() {
         setItems(items.filter(i => i.id !== itemId));
         setSelectedItem(null);
         fetchStats();
-        showToast('✅ อนุมัติเรียบร้อยแล้ว', 'success');
+        showToast('อนุมัติเรียบร้อยแล้ว', 'success');
       } else {
         showToast('ไม่สามารถอนุมัติได้', 'error');
       }
@@ -194,7 +200,7 @@ export default function ReviewQueuePage() {
         setSelectedItem(null);
         setEditedText('');
         fetchStats();
-        showToast('✅ แก้ไขและอนุมัติเรียบร้อยแล้ว', 'success');
+        showToast('แก้ไขและอนุมัติเรียบร้อยแล้ว', 'success');
       } else {
         showToast('ไม่สามารถบันทึกได้', 'error');
       }
@@ -220,7 +226,7 @@ export default function ReviewQueuePage() {
         setSelectedItem(null);
         setRejectNotes('');
         fetchStats();
-        showToast('✕ ปฏิเสธแล้ว จะแปลใหม่', 'info');
+        showToast('ปฏิเสธแล้ว จะแปลใหม่', 'info');
       } else {
         showToast('ไม่สามารถปฏิเสธได้', 'error');
       }
@@ -270,9 +276,9 @@ export default function ReviewQueuePage() {
   };
 
   const getPriorityLabel = (priority: number) => {
-    if (priority >= 4) return '🔴 สูง';
-    if (priority === 3) return '🟡 ปานกลาง';
-    return '🟢 ต่ำ';
+    if (priority >= 4) return 'สูง';
+    if (priority === 3) return 'ปานกลาง';
+    return 'ต่ำ';
   };
 
   return (
@@ -301,7 +307,7 @@ export default function ReviewQueuePage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
             <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-              {confirmModal.action === 'approve' ? '✅ ยืนยันการอนุมัติ?' : '✕ ยืนยันการปฏิเสธ?'}
+              {confirmModal.action === 'approve' ? <><CheckCircle2 size={20} className="inline mr-2" />ยืนยันการอนุมัติ?</> : <><XCircle size={20} className="inline mr-2" />ยืนยันการปฏิเสธ?</>}
             </h3>
 
             {confirmModal.action === 'reject' && (
@@ -337,7 +343,7 @@ export default function ReviewQueuePage() {
                   : 'bg-red-600 hover:bg-red-700'
                   } disabled:opacity-50`}
               >
-                {actionLoading ? '⏳ กำลังดำเนินการ...' : 'ยืนยัน'}
+                {actionLoading ? <><Loader2 size={16} className="inline mr-2 animate-spin" />กำลังดำเนินการ...</> : 'ยืนยัน'}
               </button>
             </div>
           </div>
@@ -349,7 +355,7 @@ export default function ReviewQueuePage() {
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <span className="text-2xl">📝</span>
+              <FileText size={28} />
               <div>
                 <h1 className="text-lg font-bold text-gray-900 dark:text-white">Review Queue</h1>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Human-in-the-Loop Translation Review</p>
@@ -371,7 +377,7 @@ export default function ReviewQueuePage() {
                   placeholder="ค้นหานิยาย/บท..."
                   className="w-48 pl-9 pr-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Search size={16} /></span>
               </div>
 
               <button
@@ -379,7 +385,7 @@ export default function ReviewQueuePage() {
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300"
                 title="Toggle dark mode"
               >
-                {darkMode ? '☀️' : '🌙'}
+                {darkMode ? <Sun size={20} /> : <Moon size={20} />}
               </button>
 
               <button
@@ -387,7 +393,7 @@ export default function ReviewQueuePage() {
                 disabled={loading}
                 className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
               >
-                {loading ? '⏳' : '🔄'} Refresh
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Refresh
               </button>
             </div>
           </div>
@@ -403,7 +409,7 @@ export default function ReviewQueuePage() {
                 <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">รอตรวจสอบ</div>
               </div>
-              <div className="text-3xl">⏳</div>
+              <Loader2 size={32} className="text-yellow-600 animate-spin" />
             </div>
           </div>
           <div className="bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-800 hover:shadow-md transition-shadow">
@@ -412,7 +418,7 @@ export default function ReviewQueuePage() {
                 <div className="text-2xl font-bold text-green-600">{stats.approved}</div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">อนุมัติแล้ว</div>
               </div>
-              <div className="text-3xl">✅</div>
+              <CheckCircle2 size={32} className="text-green-600" />
             </div>
           </div>
           <div className="bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-800 hover:shadow-md transition-shadow">
@@ -421,7 +427,7 @@ export default function ReviewQueuePage() {
                 <div className="text-2xl font-bold text-red-600">{stats.rejected}</div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">ปฏิเสธ</div>
               </div>
-              <div className="text-3xl">✕</div>
+              <XCircle size={32} className="text-red-600" />
             </div>
           </div>
           <div className="bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-800 hover:shadow-md transition-shadow">
@@ -430,7 +436,7 @@ export default function ReviewQueuePage() {
                 <div className="text-2xl font-bold text-blue-600">{stats.total_processed}</div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">ประมวลผลแล้ว</div>
               </div>
-              <div className="text-3xl">📊</div>
+              <BarChart3 size={32} className="text-blue-600" />
             </div>
           </div>
         </div>
@@ -453,7 +459,7 @@ export default function ReviewQueuePage() {
               : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700'
               }`}
           >
-            🔴 สูง
+            <span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-2"></span>สูง
           </button>
           <button
             onClick={() => setFilter('medium')}
@@ -462,7 +468,7 @@ export default function ReviewQueuePage() {
               : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700'
               }`}
           >
-            🟡 ปานกลาง
+            <span className="inline-block w-2 h-2 rounded-full bg-yellow-500 mr-2"></span>ปานกลาง
           </button>
           <button
             onClick={() => setFilter('low')}
@@ -471,7 +477,7 @@ export default function ReviewQueuePage() {
               : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700'
               }`}
           >
-            🟢 ต่ำ
+            <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-2"></span>ต่ำ
           </button>
 
           <div className="flex-1" />
@@ -491,7 +497,7 @@ export default function ReviewQueuePage() {
             <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
               <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
                 <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
-                  📋 รายการรอตรวจ ({items.length})
+                  <Library size={16} className="inline mr-2" />รายการรอตรวจ ({items.length})
                 </h2>
               </div>
 
@@ -503,7 +509,7 @@ export default function ReviewQueuePage() {
                   </div>
                 ) : items.length === 0 ? (
                   <div className="p-8 text-center">
-                    <div className="text-5xl mb-3">🎉</div>
+                    <div className="mb-3"><CheckCircle2 size={48} className="mx-auto text-green-500" /></div>
                     <p className="text-gray-500 dark:text-gray-400 font-medium">ไม่มีรายการรอตรวจสอบ</p>
                     <p className="text-xs text-gray-400 mt-1">ข้อความที่มีคุณภาพต่ำจะปรากฏที่นี่</p>
                   </div>
@@ -551,8 +557,8 @@ export default function ReviewQueuePage() {
                         </div>
 
                         {item.issues && item.issues.length > 0 && (
-                          <div className="mt-2 text-xs text-red-600 dark:text-red-400">
-                            ⚠️ {item.issues.length} ปัญหา
+                          <div className="mt-2 text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                            <AlertTriangle size={12} /> {item.issues.length} ปัญหา
                           </div>
                         )}
                       </div>
@@ -576,7 +582,7 @@ export default function ReviewQueuePage() {
                         disabled={items.findIndex(i => i.id === selectedItem.id) === 0}
                         className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
                       >
-                        ←
+                        <ChevronLeft size={20} />
                       </button>
                       <div>
                         <h2 className="text-lg font-bold text-gray-900 dark:text-white">
@@ -595,7 +601,7 @@ export default function ReviewQueuePage() {
                         disabled={items.findIndex(i => i.id === selectedItem.id) === items.length - 1}
                         className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
                       >
-                        →
+                        <ChevronRight size={20} />
                       </button>
                     </div>
 
@@ -617,13 +623,13 @@ export default function ReviewQueuePage() {
                   {/* Score Breakdown */}
                   <div className="grid grid-cols-4 gap-3">
                     {[
-                      { label: 'คำศัพท์', score: selectedItem.terminology_score || 85, icon: '📚' },
-                      { label: 'ความลื่นไหล', score: selectedItem.flow_score || 80, icon: '🌊' },
-                      { label: 'ความถูกต้อง', score: selectedItem.accuracy_score || 85, icon: '🎯' },
-                      { label: 'บทสนทนา', score: selectedItem.dialogue_score || 75, icon: '💬' },
+                      { label: 'คำศัพท์', score: selectedItem.terminology_score || 85, icon: <Library size={20} /> },
+                      { label: 'ความลื่นไหล', score: selectedItem.flow_score || 80, icon: <BarChart3 size={20} /> },
+                      { label: 'ความถูกต้อง', score: selectedItem.accuracy_score || 85, icon: <Target size={20} /> },
+                      { label: 'บทสนทนา', score: selectedItem.dialogue_score || 75, icon: <FileText size={20} /> },
                     ].map((metric, idx) => (
                       <div key={idx} className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
-                        <div className="text-lg mb-1">{metric.icon}</div>
+                        <div className="mb-1 text-gray-600 dark:text-gray-400">{metric.icon}</div>
                         <div className={`text-xl font-bold ${metric.score >= 80 ? 'text-green-600' :
                           metric.score >= 60 ? 'text-yellow-600' :
                             'text-red-600'
@@ -640,7 +646,7 @@ export default function ReviewQueuePage() {
                       : 'bg-gray-50 dark:bg-gray-800'
                       }`}>
                       <h3 className="font-semibold text-red-800 dark:text-red-300 mb-2 flex items-center gap-2">
-                        <span>⚠️</span> ปัญหาที่พบ
+                        <AlertTriangle size={16} /> ปัญหาที่พบ
                       </h3>
                       {selectedItem.issues && selectedItem.issues.length > 0 ? (
                         <ul className="text-sm text-red-700 dark:text-red-400 space-y-1">
@@ -661,7 +667,7 @@ export default function ReviewQueuePage() {
                       : 'bg-gray-50 dark:bg-gray-800'
                       }`}>
                       <h3 className="font-semibold text-green-800 dark:text-green-300 mb-2 flex items-center gap-2">
-                        <span>✅</span> จุดที่ดี
+                        <CheckCircle2 size={16} /> จุดที่ดี
                       </h3>
                       {selectedItem.strengths && selectedItem.strengths.length > 0 ? (
                         <ul className="text-sm text-green-700 dark:text-green-400 space-y-1">
@@ -683,14 +689,14 @@ export default function ReviewQueuePage() {
                     onClick={() => setShowOriginal(!showOriginal)}
                     className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
                   >
-                    {showOriginal ? '📖 ซ่อนต้นฉบับ' : '📖 แสดงต้นฉบับภาษาจีน'}
+                    {showOriginal ? <><BookOpen size={14} /> ซ่อนต้นฉบับ</> : <><BookOpen size={14} /> แสดงต้นฉบับภาษาจีน</>}
                   </button>
 
                   {/* Original Text (if showing) */}
                   {showOriginal && originalText && (
                     <div className="p-4 bg-gray-100 dark:bg-gray-800 rounded-xl">
-                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        📜 ต้นฉบับ (Chinese)
+                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                        <Library size={14} /> ต้นฉบับ (Chinese)
                       </h4>
                       <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">
                         {originalText}
@@ -701,8 +707,8 @@ export default function ReviewQueuePage() {
                   {/* Translation Text */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        ✏️ ข้อความที่แปล (สามารถแก้ไขได้)
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                        <Edit3 size={14} /> ข้อความที่แปล (สามารถแก้ไขได้)
                       </label>
                       <span className="text-xs text-gray-400">
                         {editedText.length} ตัวอักษร
@@ -726,7 +732,7 @@ export default function ReviewQueuePage() {
                       {actionLoading === selectedItem.id ? (
                         <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
                       ) : (
-                        '✓'
+                        <CheckCircle2 size={18} />
                       )} อนุมัติ
                     </button>
 
@@ -738,7 +744,7 @@ export default function ReviewQueuePage() {
                       {actionLoading === selectedItem.id ? (
                         <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
                       ) : (
-                        '✏️'
+                        <Edit3 size={18} />
                       )} บันทึกการแก้ไข
                     </button>
 
@@ -747,30 +753,30 @@ export default function ReviewQueuePage() {
                       disabled={actionLoading !== null}
                       className="flex-1 md:flex-none px-6 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
                     >
-                      ✕ ปฏิเสธ
+                      <XCircle size={18} /> ปฏิเสธ
                     </button>
 
                     <button
                       onClick={handleNext}
                       disabled={items.findIndex(i => i.id === selectedItem.id) === items.length - 1}
-                      className="flex-1 md:flex-none px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="flex-1 md:flex-none px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
                     >
-                      ถัดไป →
+                      ถัดไป <ArrowRight size={16} />
                     </button>
                   </div>
                 </div>
               </div>
             ) : (
               <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-12 text-center">
-                <div className="text-6xl mb-4">👈</div>
+                <div className="mb-4"><FileText size={48} className="mx-auto text-gray-400" /></div>
                 <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
                   เลือกรายการเพื่อตรวจสอบ
                 </h3>
                 <p className="text-gray-500 dark:text-gray-400 mb-4">
                   คลิกที่รายการด้านซ้ายเพื่อดูรายละเอียดและดำเนินการ
                 </p>
-                <div className="text-sm text-gray-400">
-                  💡 ใช้ปุ่มลัด: <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded">A</kbd> อนุมัติ, <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded">R</kbd> ปฏิเสธ
+                <div className="text-sm text-gray-400 flex items-center justify-center gap-2 flex-wrap">
+                  <Lightbulb size={14} /> ใช้ปุ่มลัด: <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded">A</kbd> อนุมัติ, <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded">R</kbd> ปฏิเสธ
                 </div>
               </div>
             )}

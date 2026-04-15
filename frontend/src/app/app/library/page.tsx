@@ -10,6 +10,7 @@ import type { ReadingProgress } from '@/lib/types/features';
 import { offlineStorage } from '@/lib/offline-storage';
 import { epubGenerator } from '@/lib/epub-generator';
 import { useToast } from '@/providers/ToastProvider';
+import { Library as LibraryIcon, Trash2 } from 'lucide-react';
 
 interface SavedNovel {
   id: string;
@@ -157,7 +158,7 @@ export default function LibraryPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">📚 ไลบรารี</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white"><LibraryIcon size={24} className="inline" /> ไลบรารี</h1>
           <p className="text-gray-500 dark:text-gray-400">นิยายที่บันทึกไว้ {library.length} เรื่อง</p>
         </div>
         <Link
@@ -170,7 +171,7 @@ export default function LibraryPage() {
 
       {/* Featured Novels Quick Access */}
       <div className="bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">📚 นิยายแนะนำ</h3>
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3"><LibraryIcon size={16} className="inline" /> นิยายแนะนำ</h3>
         <div className="flex gap-3 overflow-x-auto pb-2">
           {FEATURED_NOVELS.map(novel => (
             <Link
@@ -265,7 +266,7 @@ export default function LibraryPage() {
                       onClick={() => deleteFromLibrary(novel.id)}
                       className="p-2 text-gray-400 hover:text-red-500 transition-colors"
                     >
-                      🗑️
+                      <Trash2 size={16} />
                     </button>
                   </div>
 

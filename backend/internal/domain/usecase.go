@@ -16,6 +16,9 @@ type ChapterUseCase interface {
 	GetChapterByNumber(ctx context.Context, novelID string, chapterNumber int) (*Chapter, error)
 	ListChapters(ctx context.Context, novelID string, limit, offset int) ([]*Chapter, int, error)
 	TranslateChapter(ctx context.Context, chapterID, targetLang string, useContext bool) (*Chapter, error)
+	SaveChapter(ctx context.Context, novelID string, chapter *ScrapedChapter) error
+	SaveTranslatedContent(ctx context.Context, chapterID string, translatedText string) error
+	UpdateChapter(ctx context.Context, chapter *Chapter) error
 }
 
 type TerminologyUseCase interface {

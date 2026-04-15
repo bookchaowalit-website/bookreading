@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
+import Link from 'next/link';
+import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 
 export default function AppError({
   error,
@@ -14,28 +16,32 @@ export default function AppError({
   }, [error]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+    <div className="flex items-center justify-center min-h-[50vh]">
       <div className="text-center max-w-md">
-        <div className="text-6xl mb-4">😵</div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-          เกิดข้อผิดพลาดในแอป
+        <div className="inline-flex items-center justify-center w-20 h-20 bg-red-100 dark:bg-red-900/30 rounded-full mb-4">
+          <AlertTriangle size={40} className="text-red-600 dark:text-red-400" />
+        </div>
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+          เกิดข้อผิดพลาดในหน้า
         </h2>
-        <p className="text-gray-600 dark:text-gray-400 mb-6">
-          มีบางอย่างผิดพลาด กรุณาลองอีกครั้ง
+        <p className="text-gray-500 dark:text-gray-400 mb-6">
+          {error.message || 'มีบางอย่างผิดพลาด'}
         </p>
-        <div className="flex gap-3 justify-center">
+        <div className="flex items-center justify-center gap-3">
           <button
             onClick={reset}
-            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold hover:opacity-90 transition-opacity"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
-            ลองอีกครั้ง
+            <RefreshCw size={16} />
+            โหลดใหม่
           </button>
-          <a
+          <Link
             href="/app"
-            className="px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-xl font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           >
-            กลับแดชบอร์ด
-          </a>
+            <Home size={16} />
+            แดชบอร์ด
+          </Link>
         </div>
       </div>
     </div>

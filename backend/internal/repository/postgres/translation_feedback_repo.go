@@ -83,6 +83,15 @@ func (r *translationFeedbackRepository) GetQualityScore(ctx context.Context, nov
 		&score.NovelID, &score.ChapterNumber, &avgRating, &count,
 	)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			// No feedback yet, return empty score
+			return &domain.ChapterQualityScore{
+				NovelID:       novelID,
+				ChapterNumber: chapterNumber,
+				AvgRating:     0,
+				FeedbackCount: 0,
+			}, nil
+		}
 		return nil, err
 	}
 
