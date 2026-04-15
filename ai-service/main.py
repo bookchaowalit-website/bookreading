@@ -1288,8 +1288,19 @@ async def translate_agentic(request: AgenticTranslateRequest):
         provider = request.provider or os.getenv("LLM_PROVIDER", "openai").lower()
         
         # Get API keys - prefer request keys over environment
-        openai_key = request.openai_api_key or os.getenv("OPENAI_API_KEY")
-        gemini_key = request.gemini_api_key or os.getenv("GEMINI_API_KEY")
+        openai_key = request.openai_api_key
+        gemini_key = request.gemini_api_key
+        
+        # Validate that at least one API key is provided (strict BYOK)
+        if not openai_key and not gemini_key:
+            raise HTTPException(status_code=400, detail="API key required. Please add your OpenAI or Gemini API key in Settings.")
+        
+        # Validate selected provider has a key
+        provider_lower = provider.lower() if provider else "openai"
+        if provider_lower == "openai" and not openai_key:
+            raise HTTPException(status_code=400, detail="OpenAI API key required for OpenAI provider.")
+        if provider_lower == "gemini" and not gemini_key:
+            raise HTTPException(status_code=400, detail="Gemini API key required for Gemini provider.")
         
         # Create translator with user-provided or server keys
         provider_enum = LLMProvider.OPENAI if provider == "openai" else LLMProvider.GEMINI
@@ -2090,8 +2101,8 @@ def get_manga_translator(
     gemini_key: str = None
 ) -> MangaTranslationPipeline:
     """Get or create manga translator instance"""
-    openai_key = openai_key or os.getenv("OPENAI_API_KEY")
-    gemini_key = gemini_key or os.getenv("GEMINI_API_KEY")
+    openai_key = openai_key
+    gemini_key = gemini_key
 
     return create_manga_translator(
         openai_api_key=openai_key,
@@ -2865,8 +2876,19 @@ async def translate_manga_from_url(request: MangaTranslateURLRequest):
             raise HTTPException(status_code=400, detail="No images found")
 
         # Get API keys
-        openai_key = request.openai_api_key or os.getenv("OPENAI_API_KEY")
-        gemini_key = request.gemini_api_key or os.getenv("GEMINI_API_KEY")
+        openai_key = request.openai_api_key
+        gemini_key = request.gemini_api_key
+        
+        # Validate that at least one API key is provided (strict BYOK)
+        if not openai_key and not gemini_key:
+            raise HTTPException(status_code=400, detail="API key required. Please add your OpenAI or Gemini API key in Settings.")
+        
+        # Validate selected provider has a key
+        provider_lower = provider.lower() if provider else "openai"
+        if provider_lower == "openai" and not openai_key:
+            raise HTTPException(status_code=400, detail="OpenAI API key required for OpenAI provider.")
+        if provider_lower == "gemini" and not gemini_key:
+            raise HTTPException(status_code=400, detail="Gemini API key required for Gemini provider.")
 
         provider = request.provider or os.getenv("LLM_PROVIDER", "openai").lower()
         translator = get_manga_translator(

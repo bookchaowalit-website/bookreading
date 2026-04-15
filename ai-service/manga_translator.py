@@ -232,8 +232,8 @@ class MangaTranslator:
         gemini_api_key: str = None,
         model: str = "gpt-4o",
     ):
-        self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
-        self.gemini_api_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
+        self.openai_api_key = openai_api_key
+        self.gemini_api_key = gemini_api_key
         self.model = model
         
         self._openai_client = None

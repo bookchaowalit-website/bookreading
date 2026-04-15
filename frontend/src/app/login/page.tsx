@@ -52,9 +52,12 @@ export default function LoginPage() {
 
     try {
       const result = await authApi.login(email, password);
+      // Token is now stored in httpOnly cookie automatically
+      // Keep isLoggedIn and user for UI state
       localStorage.setItem('isLoggedIn', 'true');
-      localStorage.setItem('token', result.token);
       localStorage.setItem('user', JSON.stringify(result.user));
+      // Remove old token from localStorage if it exists
+      localStorage.removeItem('token');
       success('เข้าสู่ระบบสำเร็จ!');
       router.push('/app');
     } catch (err: any) {
@@ -144,9 +147,9 @@ export default function LoginPage() {
                 <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                 <span className="text-sm text-gray-600 dark:text-gray-400">จดจำฉัน</span>
               </label>
-              <a href="#" className="text-sm text-blue-600 hover:underline">
+              <Link href="/contact" className="text-sm text-blue-600 hover:underline">
                 ลืมรหัสผ่าน?
-              </a>
+              </Link>
             </div>
 
             <button

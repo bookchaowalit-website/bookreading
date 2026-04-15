@@ -463,24 +463,24 @@ export default function LandingPage() {
               <ul className="space-y-2 text-gray-400">
                 <li><a href="#features" className="hover:text-white">คุณสมบัติ</a></li>
                 <li><a href="#pricing" className="hover:text-white">ราคา</a></li>
-                <li><a href="#" className="hover:text-white">API</a></li>
+                <li><a href="/contact" className="hover:text-white">ติดต่อ API</a></li>
               </ul>
             </div>
 
             <div>
               <h4 className="font-semibold mb-4">บริษัท</h4>
               <ul className="space-y-2 text-gray-400">
-                <li><a href="#" className="hover:text-white">เกี่ยวกับเรา</a></li>
-                <li><a href="#" className="hover:text-white">บล็อก</a></li>
-                <li><a href="#" className="hover:text-white">ติดต่อ</a></li>
+                <li><Link href="/about" className="hover:text-white">เกี่ยวกับเรา</Link></li>
+                <li><a href="#pricing" className="hover:text-white">ราคาและแผน</a></li>
+                <li><Link href="/contact" className="hover:text-white">ติดต่อ</Link></li>
               </ul>
             </div>
 
             <div>
               <h4 className="font-semibold mb-4">กฎหมาย</h4>
               <ul className="space-y-2 text-gray-400">
-                <li><a href="#" className="hover:text-white">นโยบายความเป็นส่วนตัว</a></li>
-                <li><a href="#" className="hover:text-white">ข้อกำหนดการใช้งาน</a></li>
+                <li><Link href="/privacy" className="hover:text-white">นโยบายความเป็นส่วนตัว</Link></li>
+                <li><Link href="/terms" className="hover:text-white">ข้อกำหนดการใช้งาน</Link></li>
               </ul>
             </div>
           </div>

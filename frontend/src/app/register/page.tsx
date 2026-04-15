@@ -128,9 +128,12 @@ export default function RegisterPage() {
 
     try {
       const result = await authApi.register(email, password, name);
+      // Token is now stored in httpOnly cookie automatically
+      // Keep isLoggedIn and user for UI state
       localStorage.setItem('isLoggedIn', 'true');
-      localStorage.setItem('token', result.token);
       localStorage.setItem('user', JSON.stringify(result.user));
+      // Remove old token from localStorage if it exists
+      localStorage.removeItem('token');
       success('สมัครสมาชิกสำเร็จ! ยินดีต้อนรับ ' + name);
       router.push('/app');
     } catch (err: any) {
@@ -333,9 +336,9 @@ export default function RegisterPage() {
               />
               <span className="text-sm text-gray-600 dark:text-gray-400">
                 ฉันยอมรับ{' '}
-                <a href="#" className="text-blue-600 hover:underline">ข้อกำหนดการใช้งาน</a>
+                <Link href="/terms" className="text-blue-600 hover:underline">ข้อกำหนดการใช้งาน</Link>
                 {' '}และ{' '}
-                <a href="#" className="text-blue-600 hover:underline">นโยบายความเป็นส่วนตัว</a>
+                <Link href="/privacy" className="text-blue-600 hover:underline">นโยบายความเป็นส่วนตัว</Link>
               </span>
             </div>
 

@@ -94,8 +94,8 @@ class AgenticTranslator:
         model_name: Optional[str] = None,
     ):
         self.provider = provider
-        self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
-        self.gemini_api_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
+        self.openai_api_key = openai_api_key
+        self.gemini_api_key = gemini_api_key
 
         # Model names
         self.openai_model = model_name or os.getenv("OPENAI_MODEL", "gpt-4o")

@@ -32,21 +32,46 @@ export default function DashboardPage() {
   const { subscriptions } = useNovelSubscriptions(userId);
 
   useEffect(() => {
-    // Simulate initial load
-    const timer = setTimeout(() => setIsLoading(false), 500);
+    // Load library from backend API with localStorage fallback
+    const loadLibrary = async () => {
+      try {
+        const { getLibrary } = await import('@/lib/new-api');
+        const response = await getLibrary();
+        if (response.data?.library && response.data.library.length > 0) {
+          setRecentNovels(response.data.library.slice(0, 5).map((n: any) => ({
+            id: n.id || n.novel_id,
+            title: n.title,
+            author: n.author || 'ไม่ทราบผู้แต่ง',
+            chapterNumber: n.chapter_number || 1,
+            savedAt: new Date(n.saved_at || Date.now()).getTime(),
+            readingProgress: n.reading_progress || 0,
+          })));
+          setStats({
+            totalNovels: response.data.library.length,
+            totalChapters: response.data.library.reduce((acc: number, n: any) => acc + (n.chapter_number || 1), 0),
+            totalWords: 0, // Would need word count from backend
+          });
+          return;
+        }
+      } catch (err) {
+        console.log('Backend library unavailable, falling back to localStorage');
+      }
 
-    // Load library from localStorage
-    const savedLibrary = localStorage.getItem('novelLibrary');
-    if (savedLibrary) {
-      const library = JSON.parse(savedLibrary);
-      setRecentNovels(library.slice(0, 5));
-      setStats({
-        totalNovels: library.length,
-        totalChapters: library.reduce((acc: number, n: SavedNovel) => acc + 1, 0),
-        totalWords: library.reduce((acc: number, n: any) => acc + (n.content?.length || 0), 0),
-      });
-    }
-    return () => clearTimeout(timer);
+      // Fallback to localStorage
+      const savedLibrary = localStorage.getItem('novelLibrary');
+      if (savedLibrary) {
+        const library = JSON.parse(savedLibrary);
+        setRecentNovels(library.slice(0, 5));
+        setStats({
+          totalNovels: library.length,
+          totalChapters: library.reduce((acc: number, n: any) => acc + (n.chapterNumber || 1), 0),
+          totalWords: library.reduce((acc: number, n: any) => acc + (n.content?.length || 0), 0),
+        });
+      }
+    };
+
+    loadLibrary();
+    return () => { };
   }, []);
 
   useEffect(() => {

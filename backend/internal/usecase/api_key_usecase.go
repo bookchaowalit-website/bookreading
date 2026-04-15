@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/bookreading/backend/internal/crypto"
 	"github.com/bookreading/backend/internal/domain"
 )
 
@@ -49,9 +50,13 @@ func (uc *APIKeyUseCase) SaveAPIKey(ctx context.Context, userID, provider, apiKe
 		keyPrefix = apiKey[:8]
 	}
 
-	// NOTE: In production, encrypt the API key before storing
-	// For now, store as-is (will be improved with encryption later)
-	encryptedKey := apiKey
+	// Encrypt the API key before storing
+	encryptedKey, err := crypto.Encrypt(apiKey)
+	if err != nil {
+		// Log warning but continue with plaintext (development mode)
+		fmt.Printf("[WARN] API key encryption not available: %v\n", err)
+		encryptedKey = apiKey
+	}
 
 	key := &domain.UserAPIKey{
 		UserID:       userID,
@@ -86,7 +91,15 @@ func (uc *APIKeyUseCase) GetAPIKey(ctx context.Context, userID, provider string)
 		return "", nil // No key stored
 	}
 
-	return key.EncryptedKey, nil
+	// Decrypt the API key
+	decryptedKey, err := crypto.Decrypt(key.EncryptedKey)
+	if err != nil {
+		// Log warning but return as-is (probably plaintext key)
+		fmt.Printf("[WARN] API key decryption failed: %v\n", err)
+		return key.EncryptedKey, nil
+	}
+
+	return decryptedKey, nil
 }
 
 // DeleteAPIKey removes an API key

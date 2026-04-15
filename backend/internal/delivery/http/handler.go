@@ -5,12 +5,17 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/bookreading/backend/internal/domain"
 	"github.com/bookreading/backend/internal/usecase"
 )
+
+// Email format validation regex
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 
 type contextKey string
 
@@ -65,16 +70,39 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Input validation
 	if input.Email == "" || input.Password == "" {
 		h.respond(w, http.StatusBadRequest, Response{Error: "Email and password are required"})
 		return
 	}
 
+	// Email format validation
+	if !emailRegex.MatchString(input.Email) {
+		h.respond(w, http.StatusBadRequest, Response{Error: "Invalid email format"})
+		return
+	}
+
+	// Password strength validation
+	if len(input.Password) < 8 {
+		h.respond(w, http.StatusBadRequest, Response{Error: "Password must be at least 8 characters"})
+		return
+	}
+
+	// Name length validation
+	if input.Name != "" && len(input.Name) > 100 {
+		h.respond(w, http.StatusBadRequest, Response{Error: "Name must be 100 characters or less"})
+		return
+	}
+
 	result, err := h.userUsecase.Register(r.Context(), input)
 	if err != nil {
+		log.Printf("[REGISTER] Failed for email=%s: %v", input.Email, err)
 		h.respond(w, http.StatusBadRequest, Response{Error: err.Error()})
 		return
 	}
+
+	// Set HTTP-only cookie
+	h.setAuthCookie(w, result.Token)
 
 	h.respond(w, http.StatusCreated, Response{Success: true, Data: result})
 }
@@ -92,7 +120,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	result, err := h.userUsecase.Login(r.Context(), input)
 	if err != nil {
 		log.Printf("[LOGIN DEBUG] Login failed for %s: %v", input.Email, err)
-		h.respond(w, http.StatusUnauthorized, Response{Error: err.Error()})
+		h.respond(w, http.StatusUnauthorized, Response{Error: "Invalid email or password"})
 		return
 	}
 
@@ -135,13 +163,14 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 
 // setAuthCookie sets an HTTP-only, secure cookie with the JWT token
 func (h *Handler) setAuthCookie(w http.ResponseWriter, token string) {
+	secure := os.Getenv("NODE_ENV") == "production" || os.Getenv("COOKIE_SECURE") == "true"
 	cookie := &http.Cookie{
 		Name:     "auth_token",
 		Value:    token,
 		Path:     "/",
 		MaxAge:   604800, // 7 days
 		HttpOnly: true,
-		Secure:   false, // Set to true in production with HTTPS
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	}
 	http.SetCookie(w, cookie)
@@ -149,13 +178,14 @@ func (h *Handler) setAuthCookie(w http.ResponseWriter, token string) {
 
 // clearAuthCookie removes the auth cookie
 func (h *Handler) clearAuthCookie(w http.ResponseWriter) {
+	secure := os.Getenv("NODE_ENV") == "production" || os.Getenv("COOKIE_SECURE") == "true"
 	cookie := &http.Cookie{
 		Name:     "auth_token",
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   false,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	}
 	http.SetCookie(w, cookie)

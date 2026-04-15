@@ -102,7 +102,6 @@ func (u *UserUsecase) Login(ctx context.Context, input LoginInput) (*AuthRespons
 		return nil, errors.New("invalid credentials")
 	}
 	log.Printf("[LOGIN] Found user: id=%s email=%s hash_len=%d", user.ID, user.Email, len(user.PasswordHash))
-	log.Printf("[LOGIN] PasswordHash stored: %s", user.PasswordHash)
 
 	// Verify password
 	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.Password))

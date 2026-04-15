@@ -32,14 +32,17 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o main cmd/main.go
 # Final stage - minimal runtime image
 FROM alpine:latest
 
-RUN apk --no-cache add ca-certificates curl wget
+RUN apk --no-cache add ca-certificates curl wget && \
+    addgroup -S appgroup && \
+    adduser -S appuser -G appgroup
 
 WORKDIR /app
 
 # Copy binary and entrypoint script
 COPY --from=builder /app/main .
 COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh && \
+    chown -R appuser:appgroup /app
 
 # Expose both HTTP and gRPC ports
 EXPOSE 8080 9090
@@ -47,6 +50,9 @@ EXPOSE 8080 9090
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD wget --spider -q http://localhost:8080/api/health || exit 1
+
+# Use non-root user
+USER appuser
 
 # Use entrypoint to validate environment
 ENTRYPOINT ["docker-entrypoint.sh"]

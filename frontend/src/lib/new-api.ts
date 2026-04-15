@@ -1,7 +1,7 @@
 /**
  * API client for new features:
  * - Auto-Update Novel Tracking
- * - Reading Progress & Bookmarks  
+ * - Reading Progress & Bookmarks
  * - Translation Quality Feedback
  */
 
@@ -11,18 +11,34 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:808
 
 const apiClient = axios.create({
   baseURL: BACKEND_URL,
+  withCredentials: true, // Send cookies automatically
 });
 
-// Add auth token to requests
-apiClient.interceptors.request.use((config) => {
-  if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-  }
-  return config;
-});
+// ============================================
+// Library Management
+// ============================================
+
+export async function getLibrary() {
+  const response = await apiClient.get('/api/library');
+  return response.data;
+}
+
+export async function addToLibrary(data: { novel_id: string }) {
+  const response = await apiClient.post('/api/library', data);
+  return response.data;
+}
+
+export async function removeFromLibrary(novelId: string) {
+  const response = await apiClient.delete('/api/library', {
+    params: { novel_id: novelId },
+  });
+  return response.data;
+}
+
+export async function getUserProfile() {
+  const response = await apiClient.get('/api/users/me');
+  return response.data;
+}
 
 // ============================================
 // Auto-Update Novel Tracking

@@ -172,8 +172,8 @@ class TranslationAgent:
     """
     
     def __init__(self, openai_key: str = None, gemini_key: str = None, model: str = "gpt-4o"):
-        self.openai_key = openai_key or os.getenv("OPENAI_API_KEY")
-        self.gemini_key = gemini_key or os.getenv("GEMINI_API_KEY")
+        self.openai_key = openai_key
+        self.gemini_key = gemini_key
         self.model = model
         self._client = None
     
@@ -308,7 +308,7 @@ class TerminologyAgent:
     """
     
     def __init__(self, openai_key: str = None, gemini_key: str = None, model: str = "gpt-4o"):
-        self.openai_key = openai_key or os.getenv("OPENAI_API_KEY")
+        self.openai_key = openai_key
         self.model = model
         self._client = None
     
@@ -399,7 +399,7 @@ class StyleAgent:
     """
     
     def __init__(self, openai_key: str = None, gemini_key: str = None, model: str = "gpt-4o"):
-        self.openai_key = openai_key or os.getenv("OPENAI_API_KEY")
+        self.openai_key = openai_key
         self.model = model
         self._client = None
     
@@ -493,7 +493,7 @@ class QualityAgent:
     """
     
     def __init__(self, openai_key: str = None, gemini_key: str = None, model: str = "gpt-4o"):
-        self.openai_key = openai_key or os.getenv("OPENAI_API_KEY")
+        self.openai_key = openai_key
         self.model = model
         self._client = None
     
@@ -632,8 +632,8 @@ class TranslationPipeline:
         model: str = "gpt-4o",
         target_quality: str = "B",
     ):
-        self.openai_key = openai_key or os.getenv("OPENAI_API_KEY")
-        self.gemini_key = gemini_key or os.getenv("GEMINI_API_KEY")
+        self.openai_key = openai_key
+        self.gemini_key = gemini_key
         self.model = model
         self.target_quality = target_quality
         

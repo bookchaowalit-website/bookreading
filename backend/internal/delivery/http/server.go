@@ -71,7 +71,7 @@ func NewServerDependencies(db *sqlx.DB) *ServerDependencies {
 	// Initialize usecases
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		jwtSecret = "your-secret-key-change-in-production"
+		log.Fatal("FATAL: JWT_SECRET environment variable is required")
 	}
 	userUsecase := usecase.NewUserUsecase(userRepo, libraryRepo, termRepo, jwtSecret)
 	novelUsecase := usecase.NewNovelUseCase(novelRepo, chapterRepo, terminologyRepo, aiClient)
@@ -203,8 +203,8 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 	mux.Handle("/api/translations/history", middleware.TranslationRateLimitMiddleware(http.HandlerFunc(h.GetTranslationHistory)))
 	mux.Handle("/api/translations/cached", middleware.TranslationRateLimitMiddleware(http.HandlerFunc(h.GetCachedTranslation)))
 
-	// Novel subscription routes
-	mux.HandleFunc("/api/subscriptions", func(w http.ResponseWriter, r *http.Request) {
+	// Novel subscription routes (protected)
+	mux.Handle("/api/subscriptions", h.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			h.GetSubscriptions(w, r)
@@ -215,12 +215,12 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	})
-	mux.HandleFunc("/api/subscriptions/trigger-update", h.TriggerUpdate)
-	mux.HandleFunc("/api/subscriptions/history", h.GetUpdateHistory)
+	})))
+	mux.Handle("/api/subscriptions/trigger-update", h.AuthMiddleware(http.HandlerFunc(h.TriggerUpdate)))
+	mux.Handle("/api/subscriptions/history", h.AuthMiddleware(http.HandlerFunc(h.GetUpdateHistory)))
 
-	// Reading progress routes
-	mux.HandleFunc("/api/reading-progress", func(w http.ResponseWriter, r *http.Request) {
+	// Reading progress routes (protected)
+	mux.Handle("/api/reading-progress", h.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			h.GetReadingProgress(w, r)
@@ -229,11 +229,11 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	})
-	mux.HandleFunc("/api/reading-progress/novel", h.GetNovelProgress)
+	})))
+	mux.Handle("/api/reading-progress/novel", h.AuthMiddleware(http.HandlerFunc(h.GetNovelProgress)))
 
-	// Bookmark routes
-	mux.HandleFunc("/api/bookmarks", func(w http.ResponseWriter, r *http.Request) {
+	// Bookmark routes (protected)
+	mux.Handle("/api/bookmarks", h.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			h.GetBookmarks(w, r)
@@ -244,11 +244,11 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	})
-	mux.HandleFunc("/api/bookmarks/novel", h.GetNovelBookmarks)
+	})))
+	mux.Handle("/api/bookmarks/novel", h.AuthMiddleware(http.HandlerFunc(h.GetNovelBookmarks)))
 
-	// Translation feedback routes - with stricter rate limiting (10 req/min)
-	mux.Handle("/api/feedback", middleware.TranslationRateLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// Translation feedback routes (protected) - with stricter rate limiting (10 req/min)
+	mux.Handle("/api/feedback", middleware.TranslationRateLimitMiddleware(h.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			h.GetFeedback(w, r)
@@ -257,9 +257,9 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	})))
-	mux.Handle("/api/feedback/chapter", middleware.TranslationRateLimitMiddleware(http.HandlerFunc(h.GetChapterFeedback)))
-	mux.Handle("/api/feedback/quality-score", middleware.TranslationRateLimitMiddleware(http.HandlerFunc(h.GetChapterQualityScore)))
+	}))))
+	mux.Handle("/api/feedback/chapter", middleware.TranslationRateLimitMiddleware(h.AuthMiddleware(http.HandlerFunc(h.GetChapterFeedback))))
+	mux.Handle("/api/feedback/quality-score", middleware.TranslationRateLimitMiddleware(h.AuthMiddleware(http.HandlerFunc(h.GetChapterQualityScore))))
 
 	// API Key management routes (authenticated)
 	mux.HandleFunc("/api/settings/api-keys", func(w http.ResponseWriter, r *http.Request) {
@@ -399,6 +399,12 @@ func corsMiddleware(next http.Handler) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set security headers on ALL responses
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+
 		origin := r.Header.Get("Origin")
 
 		// Check if origin is allowed

@@ -14,14 +14,33 @@ export default function ProfilePage() {
   const [stats, setStats] = useState({ novelsRead: 0, chaptersRead: 0 });
 
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      const parsed = JSON.parse(userData);
-      setUser(parsed);
-      setEditName(parsed.name || '');
-    } else {
-      router.push('/login');
-    }
+    // Load user profile from backend API
+    const loadProfile = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        router.push('/login');
+        return;
+      }
+
+      try {
+        const { getUserProfile } = await import('@/lib/new-api');
+        const response = await getUserProfile();
+        const userData = response.data;
+        setUser(userData);
+        setEditName(userData.name || '');
+      } catch (err) {
+        console.error('Failed to load profile from API, falling back to localStorage');
+        // Fallback to localStorage
+        const localData = localStorage.getItem('user');
+        if (localData) {
+          setUser(JSON.parse(localData));
+        } else {
+          router.push('/login');
+        }
+      }
+    };
+
+    loadProfile();
 
     // Load stats from library
     const library = JSON.parse(localStorage.getItem('novelLibrary') || '[]');

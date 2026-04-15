@@ -3,16 +3,18 @@ import axios from 'axios';
 const AI_SERVICE_URL = process.env.NEXT_PUBLIC_AI_SERVICE_URL || 'http://localhost:8000';
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
 
-// Create axios instance with auth
+// Create axios instance with cookie-based auth
+// The browser automatically sends cookies for same-origin requests
 const apiClient = axios.create({
   baseURL: BACKEND_URL,
+  withCredentials: true, // Important: send cookies with requests
 });
 
-// Add auth token to requests
+// Fallback to localStorage token if no cookie (for development)
 if (typeof window !== 'undefined') {
   apiClient.interceptors.request.use((config) => {
     const token = localStorage.getItem('token');
-    if (token) {
+    if (token && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
