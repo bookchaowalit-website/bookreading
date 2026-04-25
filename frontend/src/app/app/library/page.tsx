@@ -7,6 +7,7 @@ import ResumeReadingButton from '@/components/ResumeReadingButton';
 import Skeleton from '@/components/Skeleton';
 import { useReadingProgress } from '@/hooks/useReadingProgress';
 import { useLibrary } from '@/hooks/useLibrary';
+import { Inbox, Search } from 'lucide-react';
 import type { ReadingProgress } from '@/lib/types/features';
 import { offlineStorage } from '@/lib/offline-storage';
 import { epubGenerator } from '@/lib/epub-generator';
@@ -90,8 +91,10 @@ export default function LibraryPage() {
   if (libraryLoading && localLibrary.length === 0) {
     return (
       <div className="max-w-6xl mx-auto space-y-6">
-        <div className="flex items-center justify-center py-20">
-          <Loader2 size={32} className="animate-spin text-gray-400" />
+        <Skeleton variant="title" className="w-48 mb-6" />
+        <Skeleton variant="text" className="w-full h-10 mb-4" />
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Skeleton count={3} variant="card" className="h-32" />
         </div>
       </div>
     );
@@ -147,7 +150,7 @@ export default function LibraryPage() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="🔍 ค้นหานิยาย..."
+            placeholder="ค้นหานิยาย..."
             className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-900 dark:text-white"
           />
         </div>
@@ -165,7 +168,7 @@ export default function LibraryPage() {
       {/* Library Grid */}
       {filteredLibrary.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 rounded-2xl p-12 border border-gray-200 dark:border-gray-700 text-center">
-          <div className="text-6xl mb-4">📭</div>
+          <Inbox size={48} className="mx-auto text-gray-300 dark:text-gray-600 mb-4" />
           <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
             {searchQuery ? 'ไม่พบนิยาย' : 'ยังไม่มีนิยายในไลบรารี'}
           </h3>

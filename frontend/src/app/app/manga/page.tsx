@@ -5,6 +5,7 @@ import { mangaApi, MangaTextRegion } from '@/lib/api';
 import ReadingProgressTracker from '@/components/ReadingProgressTracker';
 import AddBookmarkButton from '@/components/AddBookmarkButton';
 import { useCurrentReadingSession, useBookmarks } from '@/hooks/useReadingProgress';
+import { useToast } from '@/providers/ToastProvider';
 import {
   Palette, Upload, Search, CheckCircle2, XCircle, AlertTriangle, Info,
   BookOpen, Download, Lightbulb, Link2, Loader2, Globe,
@@ -24,35 +25,8 @@ interface TranslatedPage {
   error?: string;
 }
 
-// Toast/Modal types
-type ToastType = 'success' | 'error' | 'warning' | 'info';
-
-interface Toast {
-  id: number;
-  message: string;
-  type: ToastType;
-}
-
 export default function MangaTranslatorPage() {
-  // Toast state for app-style notifications
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const toastIdRef = useRef(0);
-
-  // Show toast notification
-  const showToast = useCallback((message: string, type: ToastType = 'info') => {
-    const id = ++toastIdRef.current;
-    setToasts(prev => [...prev, { id, message, type }]);
-
-    // Auto-remove after 5 seconds
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 5000);
-  }, []);
-
-  // Remove toast
-  const removeToast = useCallback((id: number) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  }, []);
+  const { success, error: showError, warning, info: showInfo } = useToast();
 
   // Input mode
   const [inputMode, setInputMode] = useState<InputMode>('url');
@@ -150,7 +124,7 @@ export default function MangaTranslatorPage() {
   // URL Mode: Fetch manga info
   const handleFetchManga = async () => {
     if (!mangaUrl.trim()) {
-      showToast('Please enter a manga URL', 'warning');
+      warning('Please enter a manga URL');
       return;
     }
     setIsFetching(true);
@@ -165,9 +139,9 @@ export default function MangaTranslatorPage() {
         total_pages: response.total_pages,
         site_name: response.site_name,
       });
-      showToast(`Found ${response.total_pages} pages from ${response.site_name}`, 'success');
+      success(`Found ${response.total_pages} pages from ${response.site_name}`);
     } catch (error: any) {
-      showToast(`Failed to fetch manga: ${error.response?.data?.detail || error.message}`, 'error');
+      showError(`Failed to fetch manga: ${error.response?.data?.detail || error.message}`);
     } finally {
       setIsFetching(false);
     }
@@ -176,11 +150,11 @@ export default function MangaTranslatorPage() {
   // URL Mode: Translate with progress
   const handleTranslateUrl = async () => {
     if (!mangaUrl.trim()) {
-      showToast('Please enter a URL', 'warning');
+      warning('Please enter a URL');
       return;
     }
     if (!openaiKey && !geminiKey) {
-      showToast('Please configure API keys in Settings', 'warning');
+      warning('Please configure API keys in Settings');
       return;
     }
 
@@ -220,9 +194,9 @@ export default function MangaTranslatorPage() {
       };
       sessionStorage.setItem('mangaReaderData', JSON.stringify(mangaReaderData));
 
-      showToast(`Translation complete! ${response.pages.length} pages translated`, 'success');
+      success(`Translation complete! ${response.pages.length} pages translated`);
     } catch (error: any) {
-      showToast(`Translation failed: ${error.response?.data?.detail || error.message}`, 'error');
+      showError(`Translation failed: ${error.response?.data?.detail || error.message}`);
     } finally {
       setIsTranslatingUrl(false);
     }
@@ -250,7 +224,7 @@ export default function MangaTranslatorPage() {
 
         if (newImages.length === files.length) {
           setImages((prev) => [...prev, ...newImages]);
-          showToast(`${newImages.length} images added`, 'success');
+          success(`${newImages.length} images added`);
         }
       };
       reader.readAsDataURL(file);
@@ -268,11 +242,11 @@ export default function MangaTranslatorPage() {
 
   const translateAllImages = async () => {
     if (images.length === 0) {
-      showToast('Please upload images first', 'warning');
+      warning('Please upload images first');
       return;
     }
     if (!openaiKey && !geminiKey) {
-      showToast('Please configure API keys in Settings', 'warning');
+      warning('Please configure API keys in Settings');
       return;
     }
 
@@ -303,9 +277,9 @@ export default function MangaTranslatorPage() {
 
         setResults([...newResults]);
       }
-      showToast(`All ${images.length} images translated!`, 'success');
+      success(`All ${images.length} images translated!`);
     } catch (error: any) {
-      showToast(`Translation failed: ${error.response?.data?.detail || error.message}`, 'error');
+      showError(`Translation failed: ${error.response?.data?.detail || error.message}`);
     } finally {
       setIsTranslating(false);
       setTranslationProgress(null);
@@ -340,33 +314,6 @@ export default function MangaTranslatorPage() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      {/* Toast Container - App-style notifications */}
-      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
-        {toasts.map(toast => (
-          <div
-            key={toast.id}
-            className={`px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 animate-slide-in min-w-[300px] max-w-[400px] ${toast.type === 'error' ? 'bg-red-500 text-white' :
-              toast.type === 'success' ? 'bg-green-500 text-white' :
-                toast.type === 'warning' ? 'bg-yellow-500 text-white' :
-                  'bg-gray-800 text-white'
-              }`}
-          >
-            <span className="text-lg">
-              {toast.type === 'error' ? <XCircle size={18} /> :
-                toast.type === 'success' ? <CheckCircle2 size={18} /> :
-                  toast.type === 'warning' ? <AlertTriangle size={18} /> : <Info size={18} />}
-            </span>
-            <span className="flex-1 text-sm">{toast.message}</span>
-            <button
-              onClick={() => removeToast(toast.id)}
-              className="text-white/70 hover:text-white"
-            >
-              ✕
-            </button>
-          </div>
-        ))}
-      </div>
-
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
@@ -662,7 +609,7 @@ export default function MangaTranslatorPage() {
                   <button
                     onClick={() => {
                       translatedPages.forEach(p => downloadImage(currentView === 'original' ? p.original_base64 : p.translated_base64, `page-${p.page_number}.png`));
-                      showToast(`Downloading ${translatedPages.length} images...`, 'info');
+                      showInfo(`Downloading ${translatedPages.length} images...`);
                     }}
                     className="px-3 py-1 rounded-lg bg-green-600 text-white text-sm hover:bg-green-700 flex items-center gap-1"
                   >
@@ -731,7 +678,7 @@ export default function MangaTranslatorPage() {
             <button
               onClick={() => {
                 results.forEach((r, i) => downloadImage(r.translatedBase64, `translated-${i}.png`));
-                showToast(`Downloading ${results.length} images...`, 'info');
+                showInfo(`Downloading ${results.length} images...`);
               }}
               className="px-3 py-1 rounded-lg bg-green-600 text-white text-sm flex items-center gap-1"
             >
@@ -771,23 +718,6 @@ export default function MangaTranslatorPage() {
           <p className="mt-2"><AlertTriangle size={14} className="inline mr-1" /> Requires API keys configured in <a href="/app/settings" className="underline">Settings</a></p>
         </div>
       </div>
-
-      {/* CSS for animation */}
-      <style jsx>{`
-        @keyframes slide-in {
-          from {
-            transform: translateX(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-        .animate-slide-in {
-          animation: slide-in 0.3s ease-out;
-        }
-      `}</style>
     </div>
   );
 }

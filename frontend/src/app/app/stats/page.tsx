@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useReadingProgress } from '@/hooks/useReadingProgress';
-import { BookOpen, Clock, Trophy, TrendingUp, Award, Calendar, Share2, ExternalLink } from 'lucide-react';
+import { BookOpen, Clock, Trophy, TrendingUp, Award, Calendar, Share2, ExternalLink, Flame, Gem, Star, Crown, Zap } from 'lucide-react';
 import { shareReadingProgress, shareAchievement } from '@/lib/sharing';
 
 interface ReadingSession {
@@ -111,7 +111,9 @@ export default function StatsPage() {
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">📊 สถิติการอ่าน</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+          <Trophy size={24} className="text-yellow-500" /> สถิติการอ่าน
+        </h1>
         <p className="text-gray-500 dark:text-gray-400 mt-1">ติดตามความคืบหน้าและสถิติการอ่านของคุณ</p>
       </div>
 
@@ -173,14 +175,14 @@ export default function StatsPage() {
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { icon: '📖', label: 'อ่านบทแรก', unlocked: stats.totalChapters >= 1 },
-            { icon: '📚', label: 'อ่าน 10 บท', unlocked: stats.totalChapters >= 10 },
-            { icon: '🔥', label: 'อ่าน 50 บท', unlocked: stats.totalChapters >= 50 },
-            { icon: '💎', label: 'อ่าน 100 บท', unlocked: stats.totalChapters >= 100 },
-            { icon: '🌟', label: 'อ่าน 500 บท', unlocked: stats.totalChapters >= 500 },
-            { icon: '👑', label: 'อ่าน 1000 บท', unlocked: stats.totalChapters >= 1000 },
-            { icon: '⚡', label: 'Streak 7 วัน', unlocked: stats.readingStreak >= 7 },
-            { icon: '🏆', label: 'Streak 30 วัน', unlocked: stats.readingStreak >= 30 },
+            { icon: <BookOpen size={24} />, label: 'อ่านบทแรก', unlocked: stats.totalChapters >= 1 },
+            { icon: <BookOpen size={24} />, label: 'อ่าน 10 บท', unlocked: stats.totalChapters >= 10 },
+            { icon: <Flame size={24} />, label: 'อ่าน 50 บท', unlocked: stats.totalChapters >= 50 },
+            { icon: <Gem size={24} />, label: 'อ่าน 100 บท', unlocked: stats.totalChapters >= 100 },
+            { icon: <Star size={24} />, label: 'อ่าน 500 บท', unlocked: stats.totalChapters >= 500 },
+            { icon: <Crown size={24} />, label: 'อ่าน 1000 บท', unlocked: stats.totalChapters >= 1000 },
+            { icon: <Zap size={24} />, label: 'Streak 7 วัน', unlocked: stats.readingStreak >= 7 },
+            { icon: <Trophy size={24} />, label: 'Streak 30 วัน', unlocked: stats.readingStreak >= 30 },
           ].map((milestone, i) => (
             <div
               key={i}

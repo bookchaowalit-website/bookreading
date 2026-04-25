@@ -3,10 +3,12 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
+import { BookOpen, Bookmark as BookmarkIcon, Globe, MessageSquare } from 'lucide-react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import api, { aiApi, novelApi, chapterApi, translationApi, ExtractedTerm, Chapter as DbChapter, Novel } from '@/lib/api';
 import { FEATURED_NOVELS, getNovelById, FeaturedNovel } from '@/lib/novels';
 import ReadingProgressBar from '@/components/ReadingProgressBar';
+import Skeleton from '@/components/Skeleton';
 import { useTranslationFeedback } from '@/hooks/useTranslationFeedback';
 import { getErrorDisplay } from '@/lib/translationErrors';
 import { useCurrentReadingSession, useBookmarks } from '@/hooks/useReadingProgress';
@@ -103,9 +105,9 @@ function ContentRenderer({
   };
 
   const fontFamilyStyles = {
-    sarabun: { fontFamily: 'var(--font-sarabun)' },
-    noto: { fontFamily: 'var(--font-sarabun)' },
-    inter: { fontFamily: 'var(--font-sarabun)' },
+    sarabun: { fontFamily: 'var(--font-sarabun), sans-serif' },
+    noto: { fontFamily: 'var(--font-noto), sans-serif' },
+    inter: { fontFamily: 'var(--font-inter), sans-serif' },
     system: { fontFamily: 'system-ui, -apple-system, sans-serif' },
   };
 
@@ -899,7 +901,7 @@ export default function ReaderPage() {
     <div className="flex flex-col items-center justify-center py-12">
       <div className="relative">
         <div className="w-16 h-16 border-4 border-blue-200 dark:border-blue-900 rounded-full"></div>
-        <div className="absolute top-0 left:0 w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="absolute top-0 left-0 w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
       <p className="mt-4 text-gray-600 dark:text-gray-300 font-medium">{message}</p>
       {isTranslating && (
@@ -913,6 +915,20 @@ export default function ReaderPage() {
           <p className="text-xs text-gray-500 mt-1 text-center">{translateProgress}%</p>
         </div>
       )}
+    </div>
+  );
+
+  const ReadingSkeleton = () => (
+    <div className="space-y-6 py-8">
+      <Skeleton variant="title" className="w-2/3 mx-auto" />
+      <Skeleton variant="text" className="w-full" />
+      <Skeleton variant="text" className="w-full" />
+      <Skeleton variant="text" className="w-5/6" />
+      <Skeleton variant="text" className="w-full" />
+      <Skeleton variant="text" className="w-4/5" />
+      <Skeleton variant="text" className="w-full" />
+      <Skeleton variant="text" className="w-full" />
+      <Skeleton variant="text" className="w-3/4" />
     </div>
   );
 
@@ -933,8 +949,8 @@ export default function ReaderPage() {
       {/* Novel Selector */}
       {!novelData && !isLoading && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-            📚 เลือกนิยายที่ต้องการอ่าน
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <BookOpen size={24} className="text-blue-600 dark:text-blue-400" /> เลือกนิยายที่ต้องการอ่าน
           </h2>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1007,7 +1023,7 @@ export default function ReaderPage() {
       )}
 
       {/* Loading State */}
-      {isLoading && <LoadingSpinner message="กำลังโหลดนิยาย..." />}
+      {isLoading && <ReadingSkeleton />}
 
       {/* Error State */}
       {error && !isLoading && (
@@ -1077,7 +1093,7 @@ export default function ReaderPage() {
                 onClick={() => setShowChapterList(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
               >
-                <span className="text-lg">📖</span>
+                <BookOpen size={18} className="text-blue-600 dark:text-blue-400" />
                 <div className="text-left">
                   <div className="text-sm font-semibold text-blue-600 dark:text-blue-300">
                     บท {currentChapter.chapter_number}
@@ -1120,7 +1136,8 @@ export default function ReaderPage() {
               scrollProgress={readingProgress}
             />
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
-              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">🔖 ที่คั่นหนังสือ</h3>
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                <BookmarkIcon size={16} /> ที่คั่นหนังสือ</h3>
               <AddBookmarkButton
                 novelId={novelData.novelId || ''}
                 chapterNumber={currentChapter.chapter_number}
@@ -1131,7 +1148,7 @@ export default function ReaderPage() {
                 <div className="mt-3 space-y-2">
                   {novelBookmarks.slice(0, 3).map((bm: Bookmark) => (
                     <div key={bm.id} className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                      <span>🔖</span>
+                      <BookmarkIcon size={12} className="flex-shrink-0" />
                       <span>บทที่ {bm.chapter_number}</span>
                       {bm.note && <span className="truncate">- {bm.note}</span>}
                     </div>
@@ -1147,6 +1164,7 @@ export default function ReaderPage() {
             <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
               <button
                 onClick={() => setViewMode('original')}
+                aria-label="ดูต้นฉบับ"
                 className={`px-3 py-1 text-sm rounded-md transition-colors ${viewMode === 'original'
                   ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow'
                   : 'text-gray-600 dark:text-gray-400'
@@ -1155,6 +1173,7 @@ export default function ReaderPage() {
                 🇨🇳 ต้นฉบับ
               </button>
               <button
+                aria-label="ดูคำแปลไทย"
                 onClick={() => {
                   if (!translatedContent && !isTranslating) handleTranslate();
                   setViewMode('translated');
@@ -1167,6 +1186,7 @@ export default function ReaderPage() {
                 🇹🇭 แปลไทย
               </button>
               <button
+                aria-label="ดูเทียบเคียง"
                 onClick={() => {
                   if (!translatedContent && !isTranslating) handleTranslate();
                   setViewMode('sideBySide');
@@ -1244,7 +1264,7 @@ export default function ReaderPage() {
           {/* Content */}
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
             {/* Loading Chapter State */}
-            {isLoadingChapter && <LoadingSpinner message="กำลังโหลดบท..." />}
+            {isLoadingChapter && <ReadingSkeleton />}
 
             {/* Translating State */}
             {isTranslating && <LoadingSpinner message="กำลังแปล..." />}
@@ -1304,7 +1324,7 @@ export default function ReaderPage() {
                     onClick={handleTranslate}
                     className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-semibold hover:opacity-90 transition-opacity"
                   >
-                    🌐 แปลเป็นภาษาไทย
+                    <Globe size={16} className="inline mr-1" /> แปลเป็นภาษาไทย
                   </button>
                 </div>
               </div>
@@ -1361,7 +1381,7 @@ export default function ReaderPage() {
 
                   <details className="group">
                     <summary className="cursor-pointer text-sm text-blue-600 dark:text-blue-400 hover:underline font-medium">
-                      📝 แสดงความคิดเห็นเกี่ยวกับบทนี้
+                      <MessageSquare size={14} className="inline mr-1" /> แสดงความคิดเห็นเกี่ยวกับบทนี้
                     </summary>
                     <div className="mt-3">
                       <TranslationFeedbackForm
@@ -1417,7 +1437,7 @@ export default function ReaderPage() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-2xl mx-4 max-h-[80vh] overflow-hidden">
             <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                📖 บททั้งหมด ({novelData.chapters.length} บท)
+                <BookOpen size={20} className="inline mr-2" /> บททั้งหมด ({novelData.chapters.length} บท)
               </h3>
               <button
                 onClick={() => setShowChapterList(false)}

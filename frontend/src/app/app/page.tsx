@@ -6,7 +6,7 @@ import { FEATURED_NOVELS } from '@/lib/novels';
 import { useReadingProgress } from '@/hooks/useReadingProgress';
 import { useNovelSubscriptions } from '@/hooks/useSubscriptions';
 import Skeleton from '@/components/Skeleton';
-import { BookOpen, Library, FileText, Bell, Settings, Lightbulb } from 'lucide-react';
+import { BookOpen, Library, FileText, Bell, Settings, Lightbulb, Inbox } from 'lucide-react';
 
 interface SavedNovel {
   id: string;
@@ -250,7 +250,7 @@ export default function DashboardPage() {
 
         {recentNovels.length === 0 ? (
           <div className="bg-white dark:bg-gray-900 rounded-xl p-8 border border-gray-200 dark:border-gray-700 text-center">
-            <div className="text-4xl mb-4">📭</div>
+            <Inbox size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-4" />
             <p className="text-gray-500 dark:text-gray-400 mb-4">ยังไม่มีนิยายในไลบรารี</p>
             <Link
               href="/app/reader"

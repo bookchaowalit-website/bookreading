@@ -5,7 +5,7 @@ import TranslationFeedbackForm from '@/components/TranslationFeedbackForm';
 import StarRating from '@/components/StarRating';
 import Skeleton from '@/components/Skeleton';
 import { useTranslationFeedback } from '@/hooks/useTranslationFeedback';
-import { FileText, Trash2, BarChart3, User, Search, Plus } from 'lucide-react';
+import { FileText, Trash2, BarChart3, User, Search, Plus, Inbox } from 'lucide-react';
 
 interface Term {
   original: string;
@@ -139,7 +139,7 @@ export default function TerminologyPage() {
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         {filteredTerms.length === 0 ? (
           <div className="p-8 text-center">
-            <div className="text-4xl mb-4">📭</div>
+            <Inbox size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-4" />
             <p className="text-gray-500 dark:text-gray-400">
               {searchQuery ? 'ไม่พบคำศัพท์' : 'ยังไม่มีคำศัพท์'}
             </p>

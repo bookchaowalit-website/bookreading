@@ -1,18 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { BookOpen, Library, Database, Smartphone, Moon, Sun, Sparkles, Check } from 'lucide-react';
+import { useTheme } from '@/providers/ThemeProvider';
 
 export default function LandingPage() {
-  const [darkMode, setDarkMode] = useState(false);
+  const { darkMode, toggleDarkMode } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setDarkMode(window.matchMedia('(prefers-color-scheme: dark)').matches);
-    }
-  }, []);
 
   const features = [
     {
@@ -131,7 +126,7 @@ export default function LandingPage() {
             {/* Auth Buttons */}
             <div className="hidden md:flex items-center gap-4">
               <button
-                onClick={() => setDarkMode(!darkMode)}
+                onClick={toggleDarkMode}
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               >
                 {darkMode ? <Sun size={20} /> : <Moon size={20} />}

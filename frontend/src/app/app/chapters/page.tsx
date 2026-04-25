@@ -6,8 +6,9 @@ import Link from 'next/link';
 import { novelApi, chapterApi, aiApi, Chapter, Novel } from '@/lib/api';
 import { FEATURED_NOVELS, getNovelById, FeaturedNovel } from '@/lib/novels';
 import SubscribeButton from '@/components/SubscribeButton';
+import Skeleton from '@/components/Skeleton';
 import { useNovelSubscriptions, useNovelSubscriptionStatus } from '@/hooks/useSubscriptions';
-import { Library, BookOpen, Rocket } from 'lucide-react';
+import { Library, BookOpen, Rocket, Loader2 } from 'lucide-react';
 
 interface ChapterWithStatus extends Chapter {
   is_loaded: boolean;
@@ -223,23 +224,20 @@ export default function ChaptersPage() {
 
       {/* Loading State */}
       {isLoading && !isScraping && (
-        <div className="flex flex-col items-center justify-center py-12">
-          <div className="relative">
-            <div className="w-16 h-16 border-4 border-blue-200 dark:border-blue-900 rounded-full"></div>
-            <div className="absolute top-0 left-0 w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Skeleton variant="avatar" className="h-10 w-10" />
+            <Skeleton variant="title" className="w-48" />
           </div>
-          <p className="mt-4 text-gray-600 dark:text-gray-300 font-medium">กำลังโหลดบท...</p>
+          <Skeleton count={8} variant="table-row" className="h-12 mb-2" />
         </div>
       )}
 
       {/* Scraping State */}
       {isScraping && (
         <div className="flex flex-col items-center justify-center py-12">
-          <div className="relative">
-            <div className="w-16 h-16 border-4 border-purple-200 dark:border-purple-900 rounded-full"></div>
-            <div className="absolute top-0 left-0 w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-          </div>
-          <p className="mt-4 text-gray-600 dark:text-gray-300 font-medium">กำลังดึงข้อมูลนิยายจากเว็บไซต์...</p>
+          <Loader2 size={32} className="animate-spin text-purple-500 mb-4" />
+          <p className="text-gray-600 dark:text-gray-300 font-medium">กำลังดึงข้อมูลนิยายจากเว็บไซต์...</p>
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">ข้อมูลจะถูกบันทึกในฐานข้อมูลเพื่อใช้ในครั้งถัดไป</p>
         </div>
       )}
