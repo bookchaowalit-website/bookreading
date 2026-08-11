@@ -90,7 +90,7 @@ export default function SubscriptionsPage() {
           </svg>
           <p className="text-gray-500 dark:text-gray-400 font-medium">ยังไม่มีการติดตาม</p>
           <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
-            ไปที่นิยายแล้วกดปุ่ม "ติดตามอัพเดทอัตโนมัติ"
+            ไปที่นิยายแล้วกดปุ่ม &quot;ติดตามอัพเดทอัตโนมัติ&quot;
           </p>
           <Link
             href="/app/library"

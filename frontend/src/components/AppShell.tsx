@@ -353,7 +353,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
                 {searchQuery && searchResults.length === 0 && (
                   <div className="px-4 py-8 text-center text-gray-400 dark:text-gray-500">
-                    <p className="text-sm">ไม่พบผลลัพธ์สำหรับ "{searchQuery}"</p>
+                    <p className="text-sm">ไม่พบผลลัพธ์สำหรับ &quot;{searchQuery}&quot;</p>
                   </div>
                 )}
 
