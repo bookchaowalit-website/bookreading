@@ -10,8 +10,7 @@ backend/vendor/
 backend/*.exe
 backend/*.test
 backend/*.out
-backend/go.sum
-
+# Track backend/go.sum for reproducible builds (do not ignore).
 # Python
 ai-service/venv/
 ai-service/__pycache__/
