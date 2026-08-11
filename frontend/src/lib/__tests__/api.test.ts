@@ -1,21 +1,17 @@
 /**
- * Unit tests for API client
+ * Unit tests for @/lib/api and @/lib/new-api.
  *
- * To run these tests, install vitest:
- *   npm install -D vitest
- * Then run:
- *   npx vitest run src/lib/__tests__/api.test.ts
+ * Auth interceptor tests import the real modules under an axios mock so
+ * axios.create + interceptors.request.use run at module load (the bug in the
+ * previous suite: it never imported lib/api, so the mock was never invoked).
  *
- * Or add to package.json scripts:
- *   "test": "vitest"
+ * Run: npm test
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import axios from 'axios';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock axios
-vi.mock('axios', () => {
-  const mockAxiosInstance = {
+const { mockInstance, mockCreate, mockAxiosPost } = vi.hoisted(() => {
+  const mockInstance = {
     get: vi.fn(),
     post: vi.fn(),
     put: vi.fn(),
@@ -32,14 +28,20 @@ vi.mock('axios', () => {
     },
   };
 
-  const mockAxios = vi.fn(() => mockAxiosInstance);
-  Object.assign(mockAxios, {
-    create: vi.fn(() => mockAxiosInstance),
+  const mockCreate = vi.fn(() => mockInstance);
+  const mockAxiosPost = vi.fn();
+
+  return { mockInstance, mockCreate, mockAxiosPost };
+});
+
+vi.mock('axios', () => {
+  const mockAxios = Object.assign(vi.fn(), {
+    create: mockCreate,
     get: vi.fn(),
-    post: vi.fn(),
+    post: mockAxiosPost,
     put: vi.fn(),
     delete: vi.fn(),
-    interceptors: mockAxiosInstance.interceptors,
+    interceptors: mockInstance.interceptors,
   });
 
   return {
@@ -48,7 +50,6 @@ vi.mock('axios', () => {
   };
 });
 
-// Mock localStorage
 const mockLocalStorage = (() => {
   let store: Record<string, string> = {};
   return {
@@ -62,7 +63,6 @@ const mockLocalStorage = (() => {
     clear: vi.fn(() => {
       store = {};
     }),
-    _getStore: () => store,
   };
 })();
 
@@ -72,218 +72,295 @@ Object.defineProperty(globalThis, 'localStorage', {
   configurable: true,
 });
 
-describe('API Client', () => {
-  let apiClient: ReturnType<typeof axios.create>;
+async function loadApi() {
+  vi.resetModules();
+  mockCreate.mockClear();
+  mockInstance.get.mockReset();
+  mockInstance.post.mockReset();
+  mockInstance.put.mockReset();
+  mockInstance.delete.mockReset();
+  mockInstance.interceptors.request.use.mockReset();
+  mockInstance.interceptors.response.use.mockReset();
+  mockCreate.mockReturnValue(mockInstance);
+  return import('@/lib/api');
+}
 
+async function loadNewApi() {
+  vi.resetModules();
+  mockCreate.mockClear();
+  mockInstance.get.mockReset();
+  mockInstance.post.mockReset();
+  mockInstance.put.mockReset();
+  mockInstance.delete.mockReset();
+  mockInstance.interceptors.request.use.mockReset();
+  mockInstance.interceptors.response.use.mockReset();
+  mockCreate.mockReturnValue(mockInstance);
+  return import('@/lib/new-api');
+}
+
+function getRequestInterceptor() {
+  const calls = mockInstance.interceptors.request.use.mock.calls;
+  expect(calls.length).toBeGreaterThan(0);
+  return calls[0][0] as (config: {
+    headers: Record<string, string>;
+    url?: string;
+    method?: string;
+  }) => {
+    headers: Record<string, string>;
+    url?: string;
+    method?: string;
+  };
+}
+
+describe('API Client (@/lib/api)', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
     mockLocalStorage.clear();
-    apiClient = axios.create();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
+    mockLocalStorage.getItem.mockClear();
+    mockLocalStorage.setItem.mockClear();
   });
 
   describe('Base URL Configuration', () => {
-    it('should create axios instance with BACKEND_URL as baseURL', () => {
+    it('creates axios instance with BACKEND_URL and withCredentials', async () => {
+      await loadApi();
       const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
 
-      expect(axios.create).toHaveBeenCalledWith({
+      expect(mockCreate).toHaveBeenCalledWith({
         baseURL: BACKEND_URL,
+        withCredentials: true,
       });
     });
 
-    it('should use default backend URL when env var is not set', () => {
-      const expectedUrl = 'http://localhost:8080';
-      expect(axios.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          baseURL: expectedUrl,
-        })
-      );
+    it('uses default backend URL when env var is not set', async () => {
+      const prev = process.env.NEXT_PUBLIC_BACKEND_URL;
+      delete process.env.NEXT_PUBLIC_BACKEND_URL;
+      try {
+        await loadApi();
+        expect(mockCreate).toHaveBeenCalledWith(
+          expect.objectContaining({
+            baseURL: 'http://localhost:8080',
+            withCredentials: true,
+          })
+        );
+      } finally {
+        if (prev === undefined) {
+          delete process.env.NEXT_PUBLIC_BACKEND_URL;
+        } else {
+          process.env.NEXT_PUBLIC_BACKEND_URL = prev;
+        }
+      }
     });
   });
 
   describe('Auth Interceptor', () => {
-    it('should register a request interceptor', () => {
-      expect(apiClient.interceptors.request.use).toHaveBeenCalled();
+    it('registers a request interceptor when window is available', async () => {
+      await loadApi();
+      expect(mockInstance.interceptors.request.use).toHaveBeenCalled();
     });
 
-    it('should add Authorization header when token exists in localStorage', () => {
+    it('adds Authorization header when token exists in localStorage', async () => {
+      await loadApi();
       mockLocalStorage.setItem('token', 'test-token-123');
 
-      // Get the interceptor callback function
-      const interceptorCall = (axios.create as any).mock.results[0].value.interceptors.request.use.mock.calls[0][0];
-
+      const interceptor = getRequestInterceptor();
       const config = { headers: {} as Record<string, string> };
-      const result = interceptorCall(config);
+      const result = interceptor(config);
 
       expect(result.headers.Authorization).toBe('Bearer test-token-123');
+      expect(mockLocalStorage.getItem).toHaveBeenCalledWith('token');
     });
 
-    it('should not add Authorization header when no token exists', () => {
-      const interceptorCall = (axios.create as any).mock.results[0].value.interceptors.request.use.mock.calls[0][0];
+    it('does not add Authorization header when no token exists', async () => {
+      await loadApi();
 
+      const interceptor = getRequestInterceptor();
       const config = { headers: {} as Record<string, string> };
-      const result = interceptorCall(config);
+      const result = interceptor(config);
 
       expect(result.headers.Authorization).toBeUndefined();
     });
 
-    it('should return config unchanged after processing', () => {
+    it('does not overwrite an existing Authorization header', async () => {
+      await loadApi();
+      mockLocalStorage.setItem('token', 'local-storage-token');
+
+      const interceptor = getRequestInterceptor();
+      const config = {
+        headers: { Authorization: 'Bearer already-set' } as Record<string, string>,
+      };
+      const result = interceptor(config);
+
+      expect(result.headers.Authorization).toBe('Bearer already-set');
+    });
+
+    it('returns the same config object after processing', async () => {
+      await loadApi();
       mockLocalStorage.setItem('token', 'my-token');
 
-      const interceptorCall = (axios.create as any).mock.results[0].value.interceptors.request.use.mock.calls[0][0];
-
+      const interceptor = getRequestInterceptor();
       const config = {
         headers: {} as Record<string, string>,
         url: '/api/test',
-        method: 'get' as const,
+        method: 'get',
       };
-      const result = interceptorCall(config);
+      const result = interceptor(config);
 
       expect(result).toBe(config);
       expect(result.url).toBe('/api/test');
+      expect(result.headers.Authorization).toBe('Bearer my-token');
     });
   });
 
   describe('Novel API', () => {
-    beforeEach(() => {
-      // Reset and re-import after mocks
-      vi.resetModules();
-    });
-
-    it('should call listNovels with correct query params', async () => {
-      const mockResponse = {
+    it('calls listNovels with correct query params and unwraps data', async () => {
+      const { novelApi } = await loadApi();
+      mockInstance.get.mockResolvedValue({
         data: {
           data: {
             novels: [{ id: '1', title: 'Test Novel' }],
             total: 1,
           },
         },
-      };
-      (axios.create as any).mock.results[0].value.get.mockResolvedValue(mockResponse);
+      });
 
-      // Simulate the API call pattern used in novelApi.listNovels
-      const params = new URLSearchParams();
-      params.append('limit', '20');
-      params.append('offset', '0');
+      const result = await novelApi.listNovels();
 
-      await apiClient.get(`/api/novels?${params.toString()}`);
-
-      expect(apiClient.get).toHaveBeenCalledWith('/api/novels?limit=20&offset=0');
+      expect(mockInstance.get).toHaveBeenCalledWith('/api/novels?limit=20&offset=0');
+      expect(result.total).toBe(1);
+      expect(result.novels[0].title).toBe('Test Novel');
     });
 
-    it('should call getNovel with correct novel ID', async () => {
-      const mockResponse = {
+    it('calls getNovel with correct novel ID', async () => {
+      const { novelApi } = await loadApi();
+      mockInstance.get.mockResolvedValue({
         data: {
           data: { id: 'novel-123', title: 'Test Novel' },
         },
-      };
-      (axios.create as any).mock.results[0].value.get.mockResolvedValue(mockResponse);
+      });
 
-      await apiClient.get('/api/novels/detail?id=novel-123');
+      const result = await novelApi.getNovel('novel-123');
 
-      expect(apiClient.get).toHaveBeenCalledWith('/api/novels/detail?id=novel-123');
+      expect(mockInstance.get).toHaveBeenCalledWith('/api/novels/detail?id=novel-123');
+      expect(result.id).toBe('novel-123');
     });
 
-    it('should include status filter when provided', async () => {
-      const params = new URLSearchParams();
-      params.append('limit', '20');
-      params.append('offset', '0');
-      params.append('status', 'ongoing');
+    it('includes status filter when provided', async () => {
+      const { novelApi } = await loadApi();
+      mockInstance.get.mockResolvedValue({
+        data: { data: { novels: [], total: 0 } },
+      });
 
-      await apiClient.get(`/api/novels?${params.toString()}`);
+      await novelApi.listNovels(20, 0, 'ongoing');
 
-      expect(apiClient.get).toHaveBeenCalledWith('/api/novels?limit=20&offset=0&status=ongoing');
+      expect(mockInstance.get).toHaveBeenCalledWith(
+        '/api/novels?limit=20&offset=0&status=ongoing'
+      );
+    });
+  });
+
+  describe('Auth API', () => {
+    it('login posts credentials and unwraps data envelope', async () => {
+      const { authApi } = await loadApi();
+      mockInstance.post.mockResolvedValue({
+        data: {
+          data: {
+            user: { id: 'u1', email: 'a@b.com', name: 'A' },
+            token: 'jwt-token',
+          },
+        },
+      });
+
+      const result = await authApi.login('a@b.com', 'secret');
+
+      expect(mockInstance.post).toHaveBeenCalledWith('/api/auth/login', {
+        email: 'a@b.com',
+        password: 'secret',
+      });
+      expect(result.token).toBe('jwt-token');
+      expect(result.user.email).toBe('a@b.com');
     });
   });
 });
 
-describe('New API Client (new-api.ts)', () => {
+describe('New API Client (@/lib/new-api)', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
     mockLocalStorage.clear();
   });
 
   describe('Subscription API', () => {
-    it('should call subscribe endpoint with correct payload', async () => {
-      const mockAxiosInstance = (axios.create as any).mock.results?.[0]?.value || axios.create();
-      mockAxiosInstance.post.mockResolvedValue({
+    it('subscribeToNovel posts correct payload', async () => {
+      const { subscribeToNovel } = await loadNewApi();
+      mockInstance.post.mockResolvedValue({
         data: { data: { id: 'sub-1' } },
       });
 
-      await mockAxiosInstance.post('/api/subscriptions', {
+      const result = await subscribeToNovel({
         novel_id: 'novel-1',
         source_url: 'https://example.com/novel',
         source_type: 'chinese',
       });
 
-      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/api/subscriptions', {
+      expect(mockInstance.post).toHaveBeenCalledWith('/api/subscriptions', {
         novel_id: 'novel-1',
         source_url: 'https://example.com/novel',
         source_type: 'chinese',
       });
+      expect(result).toEqual({ data: { id: 'sub-1' } });
     });
 
-    it('should call unsubscribe with correct params', async () => {
-      const mockAxiosInstance = (axios.create as any).mock.results?.[0]?.value || axios.create();
-      mockAxiosInstance.delete.mockResolvedValue({ data: { data: { success: true } } });
+    it('unsubscribeFromNovel deletes with id param', async () => {
+      const { unsubscribeFromNovel } = await loadNewApi();
+      mockInstance.delete.mockResolvedValue({ data: { data: { success: true } } });
 
-      await mockAxiosInstance.delete('/api/subscriptions', {
-        params: { id: 'sub-1' },
-      });
+      await unsubscribeFromNovel('sub-1');
 
-      expect(mockAxiosInstance.delete).toHaveBeenCalledWith('/api/subscriptions', {
+      expect(mockInstance.delete).toHaveBeenCalledWith('/api/subscriptions', {
         params: { id: 'sub-1' },
       });
     });
 
-    it('should call getUserSubscriptions with user_id param', async () => {
-      const mockAxiosInstance = (axios.create as any).mock.results?.[0]?.value || axios.create();
-      mockAxiosInstance.get.mockResolvedValue({
+    it('getUserSubscriptions requests with user_id param', async () => {
+      const { getUserSubscriptions } = await loadNewApi();
+      mockInstance.get.mockResolvedValue({
         data: { data: [{ id: 'sub-1', novel_id: 'novel-1', is_active: true }] },
       });
 
-      await mockAxiosInstance.get('/api/subscriptions', {
-        params: { user_id: 'user-1' },
-      });
+      await getUserSubscriptions('user-1');
 
-      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/subscriptions', {
+      expect(mockInstance.get).toHaveBeenCalledWith('/api/subscriptions', {
         params: { user_id: 'user-1' },
       });
     });
   });
 
   describe('Reading Progress API', () => {
-    it('should save reading progress with correct data', async () => {
-      const mockAxiosInstance = (axios.create as any).mock.results?.[0]?.value || axios.create();
-      mockAxiosInstance.post.mockResolvedValue({ data: { data: { id: 'progress-1' } } });
+    it('saveReadingProgress posts correct data', async () => {
+      const { saveReadingProgress } = await loadNewApi();
+      mockInstance.post.mockResolvedValue({ data: { data: { id: 'progress-1' } } });
 
-      await mockAxiosInstance.post('/api/reading-progress', {
+      await saveReadingProgress({
         novel_id: 'novel-1',
         chapter_number: 5,
         progress_percentage: 75.5,
       });
 
-      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/api/reading-progress', {
+      expect(mockInstance.post).toHaveBeenCalledWith('/api/reading-progress', {
         novel_id: 'novel-1',
         chapter_number: 5,
         progress_percentage: 75.5,
       });
     });
 
-    it('should get reading progress for a user', async () => {
-      const mockAxiosInstance = (axios.create as any).mock.results?.[0]?.value || axios.create();
-      mockAxiosInstance.get.mockResolvedValue({
-        data: { data: [{ novel_id: 'novel-1', chapter_number: 5, progress_percentage: 75.5 }] },
+    it('getReadingProgress requests with user_id param', async () => {
+      const { getReadingProgress } = await loadNewApi();
+      mockInstance.get.mockResolvedValue({
+        data: {
+          data: [{ novel_id: 'novel-1', chapter_number: 5, progress_percentage: 75.5 }],
+        },
       });
 
-      await mockAxiosInstance.get('/api/reading-progress', {
-        params: { user_id: 'user-1' },
-      });
+      await getReadingProgress('user-1');
 
-      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/reading-progress', {
+      expect(mockInstance.get).toHaveBeenCalledWith('/api/reading-progress', {
         params: { user_id: 'user-1' },
       });
     });

@@ -2,6 +2,11 @@
 
 A multilingual novel/manga reading platform with AI-powered translation (Chinese → Thai by default).
 
+See [`PRODUCT.md`](./PRODUCT.md) for the interview case study — including
+a real bug found by wiring up a test runner that had never been connected
+(tests never imported the module under test), and the 2026-08-11 fix so
+`cd frontend && npm test` is **35/35 green**.
+
 ## ✨ Features
 
 ### 📖 Novel Reading
@@ -229,7 +234,7 @@ cd backend && go test ./...
 # AI Service
 cd ai-service && pytest -v
 
-# Frontend
+# Frontend (Vitest — 35 unit tests as of 2026-08-11)
 cd frontend && npm test
 ```
 
