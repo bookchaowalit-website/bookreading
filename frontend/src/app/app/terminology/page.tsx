@@ -50,11 +50,14 @@ export default function TerminologyPage() {
     } else {
       // Default terms
       const defaultTerms: Term[] = [
-        { original: '云澈', translation: 'หยุนเช่อ', type: 'character', description: 'Main protagonist' },
-        { original: '沐玄音', translation: 'มู่เสวียนอิ่น', type: 'character', description: 'Ice Phoenix Goddess' },
-        { original: '夏倾月', translation: 'เซี่ยชิงเยว่', type: 'character', description: 'Moon God Emperor' },
-        { original: '深渊', translation: 'เหวี่ยนลึก', type: 'location', description: 'The Abyss' },
-        { original: '渊皇', translation: 'จักรพรรดิเหวี่ยน', type: 'character', description: 'Abyss Emperor' },
+        { original: '云澈', translation: 'หยุนเช่อ', type: 'character', description: 'พระเอก — LC อสูรพลิกฟ้า' },
+        { original: '萧澈', translation: 'เซียวเช่อ', type: 'character', description: 'ชาติภพใหม่' },
+        { original: '夏倾月', translation: 'เซี่ยชิงเยว่', type: 'character', description: 'ภรรยาแต่งคนแรก' },
+        { original: '茉莉', translation: 'จัสมิน', type: 'character', description: 'เทพาดาราล้างสวรรค์' },
+        { original: '楚月婵', translation: 'ฉู่เยว่ฉาน', type: 'character', description: 'นางเซียนน้อย' },
+        { original: '萧灵曦', translation: 'เซียวหลิงซี', type: 'character', description: 'อาหญิงเล็ก' },
+        { original: '沐玄音', translation: 'มู่เซวียนยิน', type: 'character', description: 'อาจารย์' },
+        { original: '冰云仙宫', translation: 'วังเมฆาเยือกแข็ง', type: 'location', description: 'Frozen Cloud Asgard' },
       ];
       setTerms(defaultTerms);
       localStorage.setItem('customTerminology', JSON.stringify(defaultTerms));

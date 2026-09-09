@@ -106,7 +106,10 @@ func TestCORSConfiguration(t *testing.T) {
 
 func TestErrorResponse(t *testing.T) {
 	w := httptest.NewRecorder()
-	ErrorResponse(w, "test error", http.StatusBadRequest)
+	WriteJSON(w, http.StatusBadRequest, ErrorResponse{
+		Success: false,
+		Error:   "test error",
+	})
 
 	resp := w.Result()
 	defer resp.Body.Close()
@@ -115,20 +118,23 @@ func TestErrorResponse(t *testing.T) {
 		t.Errorf("expected status 400, got %d", resp.StatusCode)
 	}
 
-	var body map[string]string
+	var body ErrorResponse
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if body["error"] != "test error" {
-		t.Errorf("expected error message 'test error', got '%s'", body["error"])
+	if body.Error != "test error" {
+		t.Errorf("expected error message 'test error', got '%s'", body.Error)
 	}
 }
 
 func TestSuccessResponse(t *testing.T) {
 	w := httptest.NewRecorder()
 	testData := map[string]string{"key": "value"}
-	SuccessResponse(w, testData, http.StatusOK)
+	WriteJSON(w, http.StatusOK, SuccessResponse{
+		Success: true,
+		Data:    testData,
+	})
 
 	resp := w.Result()
 	defer resp.Body.Close()

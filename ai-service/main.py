@@ -83,56 +83,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Pre-defined terminology for popular novels (Against the Gods)
-KNOWN_TERMINOLOGY = {
-    # Against the Gods (逆天邪神) characters
-    "云澈": {"translation": "หยุนเช่อ", "type": "character", "description": "Main protagonist"},
-    "沐玄音": {"translation": "มู่เสวียนอิ่น", "type": "character", "description": "Ice Phoenix Goddess"},
-    "司空度": {"translation": "สีคงตู้", "type": "character", "description": "Sikong Du"},
-    "秦无殇": {"translation": "ฉินอู๋ซาง", "type": "character", "description": "Qin Wushang"},
-    "秦无忧": {"translation": "ฉินอู๋ยู่", "type": "character", "description": "Qin Wuyou"},
-    "夏倾月": {"translation": "เซี่ยชิงเยว่", "type": "character", "description": "Moon God Emperor"},
-    "茉莉": {"translation": "โมลี่", "type": "character", "description": "Jasmine"},
-    "劫天魔帝": {"translation": "เจี๋ยเทียนหมอฮ่องเต้", "type": "character", "description": "Heavenly Demon Emperor"},
-    "南昭冥": {"translation": "หนานเจ้าหมิง", "type": "character", "description": "Abyss Knight"},
-    "南昭光": {"translation": "หนานเจ้ากวาง", "type": "character", "description": "Abyss Knight"},
-    "印风": {"translation": "อิ่นเฟิง", "type": "character", "description": "Abyss Knight subordinate"},
-    "渊皇": {"translation": "จักรพรรดิเหวี่ยน", "type": "character", "description": "Abyss Emperor"},
-    "神官": {"translation": "เทพเจ้าผู้พิทักษ์", "type": "title", "description": "Divine Official"},
-    # Locations
-    "深渊": {"translation": "เหวี่ยนลึก", "type": "location", "description": "The Abyss"},
-    "绯红裂痕": {"translation": "รอยแตกสีชาด", "type": "location", "description": "Crimson Crack"},
-    "东神域": {"translation": "ทวีปเทพตะวันออก", "type": "location", "description": "Eastern Divine Region"},
-    "苍风玄府": {"translation": "ฉางเฟิงเสวียนฟู่", "type": "location", "description": "Cangfeng Xuanfu"},
-    "天兵殿": {"translation": "ศาลาเทียนปิง", "type": "location", "description": "Tianbing Hall"},
-    "泰玄殿": {"translation": "โถงไท่ซวน", "type": "location", "description": "Taixuan Hall"},
-    "天玄殿": {"translation": "โถงเทียนซวน", "type": "location", "description": "Tianxuan Hall"},
-    "聚玄塔": {"translation": "หอคอยจู่ซวน", "type": "location", "description": "Juxuan Tower"},
-    "蓝风玄府": {"translation": "ฉางเฟิงเสวียนฟู่สีน้ำเงิน", "type": "location", "description": "Blue Wind Xuanfu"},
-    "外府": {"translation": "วังชั้นนอก", "type": "location", "description": "Outer Palace"},
-    "中府": {"translation": "วังกลาง", "type": "location", "description": "Middle Palace"},
-    "内府": {"translation": "วังชั้นใน", "type": "location", "description": "Inner Palace"},
-    # Items
-    "冰凰": {"translation": "หงส์น้ำแข็ง", "type": "creature", "description": "Ice Phoenix"},
-    "雪姬剑": {"translation": "ดาบหิมะ", "type": "item", "description": "Snow Princess Sword"},
-    "霸天巨剑": {"translation": "ดาบยักษ์ของโอเวอร์ลอร์ด", "type": "item", "description": "Overlord's Giant Sword"},
-    "天罡珍珠": {"translation": "ไข่มุกพิษสวรรค์", "type": "item", "description": "Heavenly Poison Pearl"},
-    # Cultivation/Powers
-    "神主境": {"translation": "ขั้นเทพประมุข", "type": "cultivation", "description": "Divine Master Realm"},
-    "玄力": {"translation": "พลังวิญญาณ", "type": "power", "description": "Profound Energy"},
-    "神力": {"translation": "พลังเทพ", "type": "power", "description": "Divine Power"},
-    "灵力": {"translation": "พลังวิญญาณ", "type": "power", "description": "Spiritual Power"},
-    "玄气": {"translation": "พลังวิญญาณ", "type": "power", "description": "Profound Qi"},
-    # Techniques
-    "断月拂影": {"translation": "ดวงจันทร์ขาดเงาพัดผ่าน", "type": "technique", "description": "Movement technique"},
-    "冰夷星辰": {"translation": "ดาราน้ำแข็ง", "type": "technique", "description": "Ice Star Defense"},
-    "火拳": {"translation": "หมัดไฟ", "type": "technique", "description": "Fire Fist"},
-    "火云掌": {"translation": "ฝ่ามือเมฆาไฟ", "type": "technique", "description": "Fire Cloud Palm"},
-    "泰玄心经": {"translation": "หัวใจไท่ซวน", "type": "technique", "description": "Tai Xuan Heart Art"},
-    # Titles
-    "神帝": {"translation": "เทพจักรพรรดิ", "type": "title", "description": "Divine Emperor"},
-    "邪神": {"translation": "พระเจ้าชั่วร้าย", "type": "title", "description": "Evil God"},
-}
+from name_protect import protect_text, restore_text
+from terminology import KNOWN_TERMINOLOGY
 
 
 # Request/Response Models
@@ -298,51 +250,13 @@ def get_default_translator() -> AgenticTranslator:
 
 # Translation functions
 def preprocess_terminology(text: str) -> tuple[str, dict]:
-    """Replace known terms with placeholders before translation"""
-    placeholders = {}
-    result = text
-
-    # Create unique placeholders using only numbers and special chars
-    # Format: #N# (Google Translate usually leaves these alone)
-    for idx, (original, info) in enumerate(KNOWN_TERMINOLOGY.items()):
-        if original in result:
-            placeholder = f"#{idx}#"
-            placeholders[placeholder] = info["translation"]
-            result = result.replace(original, placeholder)
-
-    return result, placeholders
+    """Replace glossary and remaining place/title spans before machine translation."""
+    return protect_text(text, KNOWN_TERMINOLOGY)
 
 
 def postprocess_terminology(text: str, placeholders: dict) -> str:
-    """Replace placeholders with actual translations after translation"""
-    result = text
-
-    # First, try direct replacement
-    for placeholder, translation in placeholders.items():
-        result = result.replace(placeholder, translation)
-
-    # Handle any translated placeholders (e.g., #0# might become # 0 # or #๐#)
-    # Try to find patterns like #number# or # Thai-number #
-    import re
-
-    # Find all remaining placeholder-like patterns
-    remaining_patterns = re.findall(r'#\s*(\d+)\s*#', result)
-    for num_str in remaining_patterns:
-        idx = int(num_str)
-        if idx < len(KNOWN_TERMINOLOGY):
-            # Get the translation for this index
-            translation = list(KNOWN_TERMINOLOGY.values())[idx]["translation"]
-            # Replace various possible formats
-            patterns_to_replace = [
-                f"#{num_str}#",
-                f"# {num_str} #",
-                f"# {num_str}#",
-                f"#{num_str} #",
-            ]
-            for p in patterns_to_replace:
-                result = result.replace(p, translation)
-
-    return result
+    """Put locked Thai names back after machine translation."""
+    return restore_text(text, placeholders)
 
 
 def format_translated_text(text: str) -> str:
@@ -502,6 +416,22 @@ def apply_terminology(text: str, terminology: List[Term], source_lang: str, targ
 
 
 # Scraping functions
+PIAOTIA_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+}
+
+
+def piaotia_http_client() -> httpx.AsyncClient:
+    """Browser-like client so Cloudflare/GBK novel sites do not reject the scraper."""
+    return httpx.AsyncClient(
+        follow_redirects=True,
+        timeout=30.0,
+        headers=PIAOTIA_HEADERS,
+    )
+
+
 async def fetch_piaotia_page(client: httpx.AsyncClient, url: str) -> str:
     """Fetch a page from piaotia.com with proper GBK encoding and rate limiting"""
     global last_request_time
@@ -515,7 +445,7 @@ async def fetch_piaotia_page(client: httpx.AsyncClient, url: str) -> str:
     
     last_request_time[domain] = asyncio.get_event_loop().time()
     
-    response = await client.get(url, timeout=30)
+    response = await client.get(url, timeout=30, headers=PIAOTIA_HEADERS)
     response.raise_for_status()
     # Try to decode with GBK encoding (common for Chinese sites)
     try:
@@ -711,7 +641,7 @@ def parse_piaotia_chapter_content(soup: BeautifulSoup) -> str:
 async def scrape_piaotia_novel(url: str) -> ScrapeResponse:
     """Scrape novel from piaotia.com - handles book info, chapter list, and chapter pages"""
 
-    async with httpx.AsyncClient() as client:
+    async with piaotia_http_client() as client:
         # Determine page type from URL
         is_book_info = '/bookinfo/' in url
         is_chapter_list = url.rstrip('/').endswith('/') or 'index.html' in url or '/html/' in url and not re.search(r'/\d+\.html$', url)
@@ -980,7 +910,7 @@ class ChapterContentResponse(BaseModel):
 async def get_chapter_content(request: ChapterContentRequest):
     """Fetch content for a single chapter on-demand"""
     try:
-        async with httpx.AsyncClient() as client:
+        async with piaotia_http_client() as client:
             if "piaotia.com" in request.url:
                 content = await fetch_piaotia_page(client, request.url)
                 soup = BeautifulSoup(content, 'lxml')
@@ -1463,6 +1393,17 @@ async def update_novel_terminology(request: UpdateTerminologyRequest):
         raise HTTPException(status_code=500, detail=f"Failed to update terminology: {str(e)}")
 
 
+@app.get("/terminology/known")
+async def get_known_terminology():
+    """Get pre-defined terminology for popular novels."""
+    return {
+        "novel": "Against the Gods (逆天邪神)",
+        "terminology": [
+            {"original": k, **v} for k, v in KNOWN_TERMINOLOGY.items()
+        ]
+    }
+
+
 @app.get("/terminology/{novel_id}")
 async def get_novel_terminology(novel_id: str):
     """Get terminology for a novel"""
@@ -1554,17 +1495,6 @@ async def get_korean_sources():
                 "description": "Korean web novel platform",
                 "language": "ko",
             },
-        ]
-    }
-
-
-@app.get("/terminology/known")
-async def get_known_terminology():
-    """Get pre-defined terminology for popular novels"""
-    return {
-        "novel": "Against the Gods (逆天邪神)",
-        "terminology": [
-            {"original": k, **v} for k, v in KNOWN_TERMINOLOGY.items()
         ]
     }
 

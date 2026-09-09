@@ -722,10 +722,10 @@ class TerminologyManager:
     KNOWN_TERMINOLOGY: Dict[str, Dict[str, TerminologyTerm]] = {
         "against_the_gods": {
             "云澈": TerminologyTerm("云澈", "หยุนเช่อ", "character", "Main protagonist"),
-            "沐玄音": TerminologyTerm("沐玄音", "มู่เสวียนอิ่น", "character", "Ice Phoenix Goddess"),
+            "沐玄音": TerminologyTerm("沐玄音", "มู่เซวียนยิน", "character", "อาจารย์ / จ้าวพิภพลำนำเหมันต์"),
             "司空度": TerminologyTerm("司空度", "สีคงตู้", "character", "Sikong Du"),
             "夏倾月": TerminologyTerm("夏倾月", "เซี่ยชิงเยว่", "character", "Xia Qingyue"),
-            "茉莉": TerminologyTerm("茉莉", "โมลี่", "character", "Jasmine"),
+            "茉莉": TerminologyTerm("茉莉", "จัสมิน", "character", "เทพาดาราล้างสวรรค์"),
             "神帝": TerminologyTerm("神帝", "เทพจักรพรรดิ", "title", "Divine Emperor"),
             "深渊": TerminologyTerm("深渊", "หวี่ยนลึก", "location", "The Abyss"),
             "冰凤": TerminologyTerm("冰凤", "หงส์น้ำแข็ง", "creature", "Ice Phoenix"),

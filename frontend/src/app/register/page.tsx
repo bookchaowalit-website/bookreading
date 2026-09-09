@@ -45,7 +45,7 @@ export default function RegisterPage() {
         break;
       case 'password':
         if (!value) error = 'กรุณากรอกรหัสผ่าน';
-        else if (value.length < 6) error = 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร';
+        else if (value.length < 8) error = 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร';
         break;
       case 'confirmPassword':
         if (!value) error = 'กรุณายืนยันรหัสผ่าน';
@@ -72,7 +72,7 @@ export default function RegisterPage() {
   const isFormValid = (): boolean => {
     const isNameValid = name.length >= 2;
     const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    const isPasswordValid = password.length >= 6;
+    const isPasswordValid = password.length >= 8;
     const isConfirmValid = confirmPassword === password && confirmPassword.length > 0;
     const isTermsAccepted = acceptTerms;
     return isNameValid && isEmailValid && isPasswordValid && isConfirmValid && isTermsAccepted;
@@ -81,7 +81,7 @@ export default function RegisterPage() {
   // Password strength
   const getPasswordStrength = (): { score: number; label: string; color: string } => {
     if (!password) return { score: 0, label: '', color: '' };
-    if (password.length < 6) return { score: 1, label: 'สั้นเกินไป', color: 'text-red-500' };
+    if (password.length < 8) return { score: 1, label: 'สั้นเกินไป', color: 'text-red-500' };
 
     let score = 0;
     if (password.length >= 8) score++;
@@ -113,7 +113,7 @@ export default function RegisterPage() {
       return;
     }
 
-    if (password.length < 6) {
+    if (password.length < 8) {
       showError('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
       setError('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
       return;

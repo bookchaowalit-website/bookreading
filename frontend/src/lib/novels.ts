@@ -23,7 +23,7 @@ export const FEATURED_NOVELS: FeaturedNovel[] = [
   {
     id: 'against-the-gods',
     title: 'Against the Gods',
-    titleTh: '逆天邪神',
+    titleTh: 'อสูรพลิกฟ้า',
     titleZh: '逆天邪神',
     author: 'Mars Gravity',
     authorTh: '火星引力',

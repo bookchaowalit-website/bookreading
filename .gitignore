@@ -22,6 +22,10 @@ frontend/.next/
 frontend/out/
 frontend/build/
 
+# Playwright
+frontend/playwright-report/
+frontend/test-results/
+
 # Environment
 .env
 .env.local

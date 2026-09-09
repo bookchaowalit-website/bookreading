@@ -6,12 +6,16 @@ Tests all agents and the review queue functionality.
 
 import asyncio
 import httpx
-import json
+import os
+import pytest
 import sys
 from datetime import datetime
 
+
+pytestmark = pytest.mark.integration
+
 # API URL
-API_URL = "http://localhost:8000"
+API_URL = os.getenv("AI_SERVICE_URL", "http://localhost:8000")
 
 # Sample Chinese text for testing
 SAMPLE_TEXT = """
@@ -39,11 +43,9 @@ async def test_health():
                 print("✅ Health check passed!")
                 return True
             else:
-                print(f"❌ Health check failed: {response.status_code}")
-                return False
+                pytest.fail(f"Health check failed: {response.status_code}: {response.text}")
         except Exception as e:
-            print(f"❌ Cannot connect to API: {e}")
-            return False
+            pytest.fail(f"Cannot connect to API: {e}")
 
 
 async def test_pipeline_translation():
@@ -96,7 +98,7 @@ async def test_pipeline_translation():
             if response.status_code == 200:
                 result = response.json()
                 print("\n✅ Pipeline translation completed!")
-                print(f"\n📊 Quality Score:")
+                print("\n📊 Quality Score:")
                 print(f"   Grade: {result['grade']}")
                 print(f"   Overall: {result['overall_score']}/100")
                 print(f"   Terminology: {result['terminology_score']}/100")
@@ -110,13 +112,13 @@ async def test_pipeline_translation():
                 if result['strengths']:
                     print(f"\n✅ Strengths: {result['strengths']}")
                 
-                print(f"\n📝 Agent Summary:")
+                print("\n📝 Agent Summary:")
                 print(f"   Translation tokens: {result['agent_summary']['translation_tokens']}")
                 print(f"   Terminology fixes: {result['agent_summary']['terminology_fixes']}")
                 print(f"   Style polish: {result['agent_summary']['style_polish']}")
                 print(f"   Total time: {result['agent_summary']['total_processing_time']:.2f}s")
                 
-                print(f"\n📖 Translated Text (first 500 chars):")
+                print("\n📖 Translated Text (first 500 chars):")
                 print("-" * 50)
                 print(result['translated_text'][:500])
                 print("-" * 50)
@@ -126,12 +128,9 @@ async def test_pipeline_translation():
                 
                 return result
             else:
-                print(f"❌ Pipeline failed: {response.status_code}")
-                print(response.text)
-                return None
+                pytest.fail(f"Pipeline failed: {response.status_code}: {response.text}")
         except Exception as e:
-            print(f"❌ Error: {e}")
-            return None
+            pytest.fail(f"Pipeline request error: {e}")
 
 
 async def test_review_queue():
@@ -155,7 +154,7 @@ async def test_review_queue():
                 print(f"    Grade: {item['grade']}")
                 print(f"    Score: {item['overall_score']}/100")
         else:
-            print(f"❌ Failed to get pending reviews: {response.status_code}")
+            pytest.fail(f"Failed to get pending reviews: {response.status_code}: {response.text}")
         
         # Get stats
         print("\n  Getting review stats...")
@@ -165,7 +164,7 @@ async def test_review_queue():
             stats = response.json()
             print(f"✅ Stats: Pending={stats['pending']}, Approved={stats['approved']}, Rejected={stats['rejected']}")
         else:
-            print(f"❌ Failed to get stats: {response.status_code}")
+            pytest.fail(f"Failed to get review stats: {response.status_code}: {response.text}")
 
 
 async def test_terminology():
@@ -184,7 +183,7 @@ async def test_terminology():
             for term in data['terminology'][:5]:
                 print(f"    {term['original']} → {term['translation']} ({term['type']})")
         else:
-            print(f"❌ Failed to get terminology: {response.status_code}")
+            pytest.fail(f"Failed to get terminology: {response.status_code}: {response.text}")
 
 
 async def run_all_tests():
@@ -205,7 +204,7 @@ async def run_all_tests():
     await test_terminology()
     
     # Test pipeline translation
-    result = await test_pipeline_translation()
+    await test_pipeline_translation()
     
     # Test review queue
     await test_review_queue()

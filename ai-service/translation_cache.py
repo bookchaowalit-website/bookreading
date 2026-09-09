@@ -8,7 +8,7 @@ import hashlib
 import json
 import time
 from typing import Optional, Dict, List
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 
 
 @dataclass
@@ -44,15 +44,31 @@ class TranslationCache:
         self.hits = 0
         self.misses = 0
     
-    def _compute_hash(self, text: str, terminology: Optional[List[Dict]] = None) -> str:
-        """Compute hash for source text + terminology context"""
-        content = text.strip().lower()
+    def _compute_hash(
+        self,
+        text: str,
+        source_lang: str,
+        target_lang: str,
+        terminology: Optional[List[Dict]] = None,
+    ) -> str:
+        """Compute a hash for the complete translation context."""
+        content = "::".join(
+            (
+                source_lang.strip().lower(),
+                target_lang.strip().lower(),
+                text.strip().lower(),
+            )
+        )
         if terminology:
-            # Include terminology in hash to ensure context-aware caching
+            # Include both source terms and translations so a glossary edit
+            # cannot return a stale translation for the same source text.
             term_str = json.dumps(sorted(
-                [t.get('original', '') for t in terminology],
+                [
+                    (t.get('original', ''), t.get('translation', ''))
+                    for t in terminology
+                ],
                 key=lambda x: x
-            ))
+            ), ensure_ascii=False, separators=(",", ":"))
             content += f"::terms::{term_str}"
         return hashlib.sha256(content.encode('utf-8')).hexdigest()
     
@@ -72,7 +88,12 @@ class TranslationCache:
         Get cached translation if available.
         Returns translated text or None if not found.
         """
-        text_hash = self._compute_hash(source_text, terminology)
+        text_hash = self._compute_hash(
+            source_text,
+            source_lang,
+            target_lang,
+            terminology,
+        )
         
         if text_hash in self.cache:
             cached = self.cache[text_hash]
@@ -100,7 +121,12 @@ class TranslationCache:
             target_lang: str, provider: str, terminology: Optional[List[Dict]] = None,
             quality_score: float = 0.0):
         """Cache a new translation"""
-        text_hash = self._compute_hash(source_text, terminology)
+        text_hash = self._compute_hash(
+            source_text,
+            source_lang,
+            target_lang,
+            terminology,
+        )
         term_hash = self._compute_terminology_hash(terminology)
         
         # Evict oldest if at capacity

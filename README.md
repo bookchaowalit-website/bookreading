@@ -233,6 +233,8 @@ cd backend && go test ./...
 
 # AI Service
 cd ai-service && pytest -v
+# Live endpoint checks (requires the AI service and supporting infrastructure)
+cd ai-service && pytest -m integration -v
 
 # Frontend (Vitest — 35 unit tests as of 2026-08-11)
 cd frontend && npm test

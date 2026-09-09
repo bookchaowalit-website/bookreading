@@ -6,6 +6,8 @@ Handles known terminology, extraction, and application.
 from typing import List, Dict, Optional, Tuple
 from pydantic import BaseModel
 
+from glossary_loader import load_all_glossaries, terms_longest_first
+
 
 class Term(BaseModel):
     original: str
@@ -70,8 +72,11 @@ KNOWN_TERMINOLOGY: Dict[str, Dict] = {
     "泰玄心经": {"translation": "หัวใจไท่ซวน", "type": "technique", "description": "Tai Xuan Heart Art"},
     # Titles
     "神帝": {"translation": "เทพจักรพรรดิ", "type": "title", "description": "Divine Emperor"},
-    "邪神": {"translation": "พระเจ้าชั่วร้าย", "type": "title", "description": "Evil God"},
+    "邪神": {"translation": "อสูรเทพ", "type": "title", "description": "Evil God"},
 }
+
+# Official/community LC names win over the hardcoded seed.
+KNOWN_TERMINOLOGY.update(load_all_glossaries())
 
 
 def get_known_terminology() -> Dict[str, Dict]:
@@ -102,10 +107,12 @@ def extract_terms_from_text(text: str, source_lang: str = "zh", target_lang: str
     import re
     from collections import Counter
     
-    # Find repeated Chinese characters/phrases (potential terms)
-    # Look for 2-4 character sequences
-    chinese_pattern = re.compile(r'[\u4e00-\u9fff]{2,4}')
-    matches = chinese_pattern.findall(text)
+    # Find repeated Chinese phrases (potential terms). Use overlapping
+    # windows so adjacent repetitions such as 云澈云澈云澈 are observable.
+    matches = []
+    for width in range(2, 5):
+        chinese_pattern = re.compile(rf'(?=([\u4e00-\u9fff]{{{width}}}))')
+        matches.extend(chinese_pattern.findall(text))
     
     # Count occurrences
     counter = Counter(matches)
@@ -138,7 +145,7 @@ def preprocess_terminology(text: str) -> Tuple[str, Dict[str, str]]:
     processed = text
     counter = 0
     
-    for term, data in KNOWN_TERMINOLOGY.items():
+    for term, data in terms_longest_first(KNOWN_TERMINOLOGY):
         if term in text:
             placeholder = f"__TERM_{counter}__"
             placeholders[placeholder] = data["translation"]

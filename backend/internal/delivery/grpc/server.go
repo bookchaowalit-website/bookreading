@@ -1,3 +1,8 @@
+//go:build generated_grpc
+
+// The generated protobuf implementation is intentionally absent from this
+// checkout. Keep the adapter available for generated builds, while allowing
+// the documented local HTTP-only backend to compile without generated code.
 package grpc
 
 import (
