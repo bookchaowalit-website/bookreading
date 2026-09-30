@@ -30,13 +30,32 @@ func init() {
 
 type PaymentHandler struct {
 	userRepo domain.UserRepository
+	plans    BillingPlans
 }
 
+// NewPaymentHandler builds a handler whose plan catalog comes from the
+// environment. Startup validates the same configuration (see
+// NewServerDependencies); here an invalid configuration disables billing.
 func NewPaymentHandler(userRepo domain.UserRepository) *PaymentHandler {
-	return &PaymentHandler{userRepo: userRepo}
+	plans, err := LoadBillingPlansFromEnv()
+	if err != nil {
+		log.Printf("[WARN] billing disabled: %v", err)
+		plans = BillingPlans{}
+	}
+	return NewPaymentHandlerWithPlans(userRepo, plans)
+}
+
+// NewPaymentHandlerWithPlans builds a handler with an explicit plan catalog.
+func NewPaymentHandlerWithPlans(userRepo domain.UserRepository, plans BillingPlans) *PaymentHandler {
+	if plans == nil {
+		plans = BillingPlans{}
+	}
+	return &PaymentHandler{userRepo: userRepo, plans: plans}
 }
 
 type CreateCheckoutSessionRequest struct {
+	// PriceID carries the plan key ("pro", "team"); the Stripe Price ID is
+	// resolved server-side from configuration and never trusted from clients.
 	PriceID string `json:"price_id"`
 }
 
@@ -45,40 +64,14 @@ type CreateCheckoutSessionResponse struct {
 	SessionID  string `json:"session_id"`
 }
 
-// Pricing plans
-var plans = map[string]struct {
-	Name        string
-	PriceID     string
-	Amount      int64
-	Currency    string
-	Interval    string
-	Description string
-}{
-	"pro": {
-		Name:        "Pro",
-		PriceID:     "price_pro_monthly",
-		Amount:      9900, // $99.00 in cents (or 99 THB)
-		Currency:    "thb",
-		Interval:    "month",
-		Description: "Pro plan - Unlimited novels, no ads, export features",
-	},
-	"team": {
-		Name:        "Team",
-		PriceID:     "price_team_monthly",
-		Amount:      29900, // $299.00 in cents (or 299 THB)
-		Currency:    "thb",
-		Interval:    "month",
-		Description: "Team plan - Everything in Pro + team features",
-	},
-}
-
 func (h *PaymentHandler) GetPricingPlans(w http.ResponseWriter, r *http.Request) {
-	plansList := make([]map[string]interface{}, 0, len(plans))
-	for id, plan := range plans {
+	ordered := h.plans.Ordered()
+	plansList := make([]map[string]interface{}, 0, len(ordered))
+	for _, plan := range ordered {
 		plansList = append(plansList, map[string]interface{}{
-			"id":          id,
+			"id":          plan.ID,
 			"name":        plan.Name,
-			"price_id":    plan.PriceID,
+			"price_id":    plan.ID,
 			"amount":      plan.Amount,
 			"currency":    plan.Currency,
 			"interval":    plan.Interval,
@@ -87,7 +80,8 @@ func (h *PaymentHandler) GetPricingPlans(w http.ResponseWriter, r *http.Request)
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"plans": plansList,
+		"plans":           plansList,
+		"billing_enabled": h.plans.Enabled(),
 	})
 }
 
@@ -104,7 +98,11 @@ func (h *PaymentHandler) CreateCheckoutSession(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	plan, ok := plans[req.PriceID]
+	if !h.plans.Enabled() {
+		respondError(w, http.StatusServiceUnavailable, "Billing is not configured")
+		return
+	}
+	plan, ok := h.plans[req.PriceID]
 	if !ok {
 		respondError(w, http.StatusBadRequest, "Invalid price ID")
 		return
@@ -150,17 +148,7 @@ func (h *PaymentHandler) CreateCheckoutSession(w http.ResponseWriter, r *http.Re
 		}),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
-				PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{
-					Currency: stripe.String(plan.Currency),
-					ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{
-						Name:        stripe.String(plan.Name),
-						Description: stripe.String(plan.Description),
-					},
-					UnitAmount: stripe.Int64(plan.Amount),
-					Recurring: &stripe.CheckoutSessionLineItemPriceDataRecurringParams{
-						Interval: stripe.String(plan.Interval),
-					},
-				},
+				Price:    stripe.String(plan.PriceID),
 				Quantity: stripe.Int64(1),
 			},
 		},
@@ -169,7 +157,7 @@ func (h *PaymentHandler) CreateCheckoutSession(w http.ResponseWriter, r *http.Re
 		CancelURL:  stripe.String(frontendURL() + "/app/settings?canceled=true"),
 	}
 	params.AddMetadata("user_id", userID)
-	params.AddMetadata("plan", req.PriceID)
+	params.AddMetadata("plan", plan.ID)
 
 	sess, err := checkout.New(params)
 	if err != nil {
@@ -260,6 +248,10 @@ func (h *PaymentHandler) syncSubscription(r *http.Request, eventType string, at 
 	}
 
 	plan, status := user.SubscriptionPlan, subscriptionStatusFor(sub)
+	// A plan switch in the billing portal changes the subscription's Price.
+	if p, ok := h.planForSubscription(sub); ok {
+		plan = p
+	}
 	if eventType == "customer.subscription.deleted" {
 		status = "canceled"
 	}
@@ -321,6 +313,23 @@ func (h *PaymentHandler) applyCheckoutCompleted(r *http.Request, at time.Time, s
 	}
 	markEventApplied(user, at)
 	return h.userRepo.Update(r.Context(), user)
+}
+
+// planForSubscription maps the subscription's configured Stripe Price back to
+// a plan key. Unknown prices (for example a retired Price) leave the plan as is.
+func (h *PaymentHandler) planForSubscription(sub *stripe.Subscription) (string, bool) {
+	if sub.Items == nil {
+		return "", false
+	}
+	for _, item := range sub.Items.Data {
+		if item == nil || item.Price == nil {
+			continue
+		}
+		if plan, ok := h.plans.PlanForPrice(item.Price.ID); ok {
+			return plan, true
+		}
+	}
+	return "", false
 }
 
 // eventTime returns the event's creation time (Stripe `created`, seconds).

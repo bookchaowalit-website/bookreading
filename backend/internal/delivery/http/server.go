@@ -42,6 +42,7 @@ type ServerDependencies struct {
 	BookmarkUseCase            *usecase.BookmarkUseCase
 	TranslationFeedbackUseCase *usecase.TranslationFeedbackUseCase
 	APIKeyUseCase              *usecase.APIKeyUseCase
+	BillingPlans               BillingPlans
 }
 
 // NewServerDependencies creates shared dependencies from environment and database
@@ -72,6 +73,15 @@ func NewServerDependencies(db *sqlx.DB) *ServerDependencies {
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
 		log.Fatal("FATAL: JWT_SECRET environment variable is required")
+	}
+	// Billing: Stripe Price IDs come from STRIPE_PRICE_*; a broken billing
+	// configuration fails fast instead of failing at the first checkout.
+	billingPlans, err := LoadBillingPlansFromEnv()
+	if err != nil {
+		log.Fatalf("FATAL: invalid billing configuration: %v", err)
+	}
+	if !billingPlans.Enabled() {
+		log.Println("[INFO] billing disabled: STRIPE_SECRET_KEY and STRIPE_PRICE_* are not set")
 	}
 	userUsecase := usecase.NewUserUsecase(userRepo, libraryRepo, termRepo, jwtSecret)
 	novelUsecase := usecase.NewNovelUseCase(novelRepo, chapterRepo, terminologyRepo, aiClient)
@@ -116,6 +126,7 @@ func NewServerDependencies(db *sqlx.DB) *ServerDependencies {
 		BookmarkUseCase:            bookmarkUseCase,
 		TranslationFeedbackUseCase: translationFeedbackUseCase,
 		APIKeyUseCase:              apiKeyUseCase,
+		BillingPlans:               billingPlans,
 	}
 }
 
@@ -276,7 +287,7 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 	})
 
 	// Payment routes
-	paymentHandler := NewPaymentHandler(deps.UserRepo)
+	paymentHandler := NewPaymentHandlerWithPlans(deps.UserRepo, deps.BillingPlans)
 	mux.HandleFunc("/api/payments/stripe/webhook", paymentHandler.HandleWebhook)
 	mux.HandleFunc("/api/payments/plans", h.AuthMiddleware(paymentHandler.GetPricingPlans))
 	mux.HandleFunc("/api/payments/stripe/checkout", h.AuthMiddleware(paymentHandler.CreateCheckoutSession))

@@ -4,8 +4,9 @@ Living backlog for improvement passes. Keep it short and actionable.
 
 ## Current state
 
-**Score: 7.5/10** (7 after pass 2, 6 after pass 1, 5 originally). Billing
-lifecycle round-trips through Stripe webhooks and is now order-safe. Three services build and their unit tests
+**Score: 8/10** (7.5 after pass 3, 7 after pass 2, 6 after pass 1, 5
+originally). Billing uses configured Stripe Prices (validated at startup),
+round-trips through webhooks order-safely and follows portal plan switches. Three services build and their unit tests
 pass locally; backend is golangci-lint clean; CI now runs the real checks.
 Large untested surface remains (ai-service `main.py` is ~3k lines, Go
 repositories/handlers have no DB-backed tests).
@@ -21,15 +22,18 @@ Local check commands:
 ## Backlog
 
 ### P0
-- Plans use `price_data` with fake price IDs (`price_pro_monthly`); move to
-  real Stripe Price IDs from env so the billing portal can switch plans.
+- (none open) Operator task before enabling billing: create recurring Prices
+  in Stripe, set `STRIPE_PRICE_PRO`/`STRIPE_PRICE_TEAM`, and enable plan
+  switching between them in the Stripe billing-portal configuration.
 
 ### P1
+- Checkout sends `promptpay` with `mode=subscription`; verify Stripe supports
+  it for recurring Prices in the account, otherwise drop it (checkout fails).
+- Frontend subscription page hard-codes plan cards/prices; render
+  `GET /api/payments/plans` (now returns `billing_enabled`) instead.
 - Go: repository-layer tests against a throwaway Postgres (CI already has
   the service container pattern), starting with `user_repository.go`.
 - Frontend: tests for `sharing.ts`, `novels.ts`, `offline-storage.ts`.
-- Frontend subscription page shows raw `past_due`/`incomplete`/`canceled`
-  statuses; add Thai labels next to the existing `active`/`canceling`.
 
 ### P2
 - Adopt `ruff format` for ai-service in one mechanical commit, then add
@@ -38,7 +42,25 @@ Local check commands:
   warnings reported by `npm run lint`.
 - Consolidate the overlapping `ci.yml` and per-service workflows.
 
-## Done in this pass (pass 3)
+## Done in this pass (pass 4)
+- Backend: plans now charge configured Stripe Prices (`STRIPE_PRICE_PRO`,
+  `STRIPE_PRICE_TEAM`) instead of inline `price_data` with hard-coded
+  amounts. `LoadBillingPlans` validates at startup (fatal): IDs must look
+  like `price_<id>` (the old `price_pro_monthly` placeholder is rejected),
+  no duplicates, all prices required once `STRIPE_SECRET_KEY` is set, no
+  half-configured billing. Billing unset -> checkout 503. Clients still send
+  plan keys; Price IDs are never taken from or exposed to clients.
+- Backend: `customer.subscription.updated` maps the subscription item's
+  Price back to a plan, so billing-portal upgrades/downgrades update
+  `subscription_plan` (unknown/retired prices keep the current plan).
+- Tests (no network): env validation table, checkout against an in-process
+  fake Stripe API via stripe-go's backend hook (asserts `line_items[0][price]`
+  and no `price_data`), 503/400 paths, portal plan-switch webhooks.
+- Frontend: Thai labels for `past_due`/`incomplete`/`canceled` plus an alert
+  prompting a billing update (`src/lib/subscriptionStatus.ts`, 8 tests).
+- `.env.example`/compose: `STRIPE_PRICE_*`; example leaves billing disabled.
+
+## Done in pass 3
 - Backend: Stripe webhooks are order-safe. New `users.stripe_event_at`
   (migration 008 + `init.sql`; apply before deploying this backend) stores
   the `created` time of the newest applied event; strictly older events are
