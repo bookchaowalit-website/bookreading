@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/bookreading/backend/internal/domain"
 	"github.com/stripe/stripe-go/v74"
@@ -160,8 +161,8 @@ func (h *PaymentHandler) CreateCheckoutSession(w http.ResponseWriter, r *http.Re
 			},
 		},
 		Mode:       stripe.String(string(stripe.CheckoutSessionModeSubscription)),
-		SuccessURL: stripe.String("http://localhost:3000/app/settings?session_id={CHECKOUT_SESSION_ID}"),
-		CancelURL:  stripe.String("http://localhost:3000/app/settings?canceled=true"),
+		SuccessURL: stripe.String(frontendURL() + "/app/settings?session_id={CHECKOUT_SESSION_ID}"),
+		CancelURL:  stripe.String(frontendURL() + "/app/settings?canceled=true"),
 	}
 	params.AddMetadata("user_id", userID)
 	params.AddMetadata("plan", req.PriceID)
@@ -236,11 +237,74 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case "customer.subscription.deleted", "customer.subscription.updated":
-		// Not implemented yet: needs a lookup by StripeSubscriptionID.
-		// Acknowledged so Stripe does not retry. See docs/UPGRADE-PLAN.md.
+		var sub stripe.Subscription
+		if err := json.Unmarshal(event.Data.Raw, &sub); err != nil || sub.ID == "" {
+			respondError(w, http.StatusBadRequest, "Invalid event payload")
+			return
+		}
+		if err := h.syncSubscription(r, string(event.Type), &sub); err != nil {
+			log.Printf("[ERROR] stripe %s for subscription %s: %v", event.Type, sub.ID, err)
+			respondError(w, http.StatusInternalServerError, "Failed to update subscription")
+			return
+		}
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"status": "received"})
+}
+
+// syncSubscription mirrors a Stripe subscription's state onto its owner.
+// The event carries the full current subscription object, so applying it is
+// idempotent: replays and retries converge on the same user row, and a no-op
+// write is skipped. Unknown subscriptions (for example an older subscription
+// already replaced by a new checkout) are acknowledged without changes.
+func (h *PaymentHandler) syncSubscription(r *http.Request, eventType string, sub *stripe.Subscription) error {
+	user, err := h.userRepo.GetByStripeSubscriptionID(r.Context(), sub.ID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return nil
+	}
+
+	plan, status := user.SubscriptionPlan, subscriptionStatusFor(sub)
+	if eventType == "customer.subscription.deleted" {
+		status = "canceled"
+	}
+	if status == "canceled" {
+		plan = "free"
+	}
+	if plan == user.SubscriptionPlan && status == user.SubscriptionStatus {
+		return nil
+	}
+	user.SubscriptionPlan = plan
+	user.SubscriptionStatus = status
+	return h.userRepo.Update(r.Context(), user)
+}
+
+// subscriptionStatusFor maps Stripe's subscription status onto the values the
+// frontend understands: active, canceling, past_due, incomplete or canceled.
+func subscriptionStatusFor(sub *stripe.Subscription) string {
+	switch sub.Status {
+	case stripe.SubscriptionStatusActive, stripe.SubscriptionStatusTrialing:
+		if sub.CancelAtPeriodEnd {
+			return "canceling"
+		}
+		return "active"
+	case stripe.SubscriptionStatusPastDue, stripe.SubscriptionStatusUnpaid, stripe.SubscriptionStatusPaused:
+		return "past_due"
+	case stripe.SubscriptionStatusIncomplete:
+		return "incomplete"
+	default: // canceled, incomplete_expired
+		return "canceled"
+	}
+}
+
+// frontendURL is the public origin used for Stripe checkout redirects.
+func frontendURL() string {
+	if u := strings.TrimRight(os.Getenv("FRONTEND_URL"), "/"); u != "" {
+		return u
+	}
+	return "http://localhost:3000"
 }
 
 func (h *PaymentHandler) GetSubscriptionStatus(w http.ResponseWriter, r *http.Request) {

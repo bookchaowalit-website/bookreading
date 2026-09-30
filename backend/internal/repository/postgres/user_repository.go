@@ -53,6 +53,20 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.
 	return &user, nil
 }
 
+// GetByStripeSubscriptionID returns (nil, nil) when no user owns the subscription.
+func (r *UserRepository) GetByStripeSubscriptionID(ctx context.Context, subscriptionID string) (*domain.User, error) {
+	var user domain.User
+	query := `SELECT * FROM users WHERE stripe_subscription_id = $1`
+	err := r.db.GetContext(ctx, &user, query, subscriptionID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
 func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
 	query := `
 		UPDATE users 
