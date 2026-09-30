@@ -47,8 +47,14 @@ Local check commands:
   a negative `limit`/`offset` made Postgres fail the request with a 500, and
   `limit` had no ceiling (now 200). Applies to novels, chapters, translation
   history and update history (`usecase/pagination_test.go`). The gRPC
-  server (behind the `generated_grpc` tag) benefits via the usecases; its
-  int32 `Page-1` arithmetic is still unguarded.
+  server (behind the `generated_grpc` tag) now maps `page`/`page_size`
+  through a tag-free `pageWindow` helper (`delivery/grpc/pagination.go`,
+  table test): page < 1 (incl. `MinInt32`, whose `Page-1` wrapped) becomes
+  1, the size goes through `NormalizePage` *before* the offset is computed
+  (page 2 of size 1000 used to skip rows 200..999), the offset is int64 and
+  capped at `MaxInt32`, and responses echo the clamped values. The generated
+  protobuf stubs are absent (`pb` is a 3-line stub), so the tagged build is
+  checked only as "no errors besides undefined `pb.*`".
 - Backend: plans now charge configured Stripe Prices (`STRIPE_PRICE_PRO`,
   `STRIPE_PRICE_TEAM`) instead of inline `price_data` with hard-coded
   amounts. `LoadBillingPlans` validates at startup (fatal): IDs must look
