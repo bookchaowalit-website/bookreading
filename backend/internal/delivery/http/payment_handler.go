@@ -1,7 +1,10 @@
 package http
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -288,9 +291,14 @@ func (h *PaymentHandler) applyCheckoutCompleted(r *http.Request, at time.Time, s
 		return nil
 	}
 	user, err := h.userRepo.GetByID(r.Context(), userID)
-	if err != nil || user == nil {
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && user == nil) {
 		// Unknown user (for example deleted since checkout): acknowledge.
 		return nil
+	}
+	if err != nil {
+		// Transient lookup failure: surface it so the handler answers 5xx and
+		// Stripe retries; acknowledging would drop a paid activation.
+		return fmt.Errorf("load user %s: %w", userID, err)
 	}
 	if isStaleEvent(user, at) {
 		log.Printf("[INFO] ignoring stale checkout.session.completed %s for user %s", sess.ID, userID)

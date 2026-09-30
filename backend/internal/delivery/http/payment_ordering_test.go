@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 	"testing"
 	"time"
@@ -110,5 +111,27 @@ func TestCheckoutForUnknownUserIsAcknowledged(t *testing.T) {
 	deliver(t, h, "checkout.session.completed", tCheckout, checkoutObject("sub_1"))
 	if repo.updates != 0 {
 		t.Fatalf("updates = %d, want 0", repo.updates)
+	}
+}
+
+func TestCheckoutLookupFailureIsRetried(t *testing.T) {
+	t.Setenv("STRIPE_WEBHOOK_SECRET", testWebhookSecret)
+	repo := newFakeUserRepo(subscribedUser("free", "active", ""))
+	repo.getErr = errors.New("connection refused")
+	h := NewPaymentHandler(repo)
+
+	payload, sig := signedEventAt(t, "checkout.session.completed", tCheckout, checkoutObject("sub_1"))
+	if code := postWebhook(t, h, payload, sig); code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 so Stripe retries", code)
+	}
+	if repo.updates != 0 {
+		t.Fatalf("updates = %d, want 0", repo.updates)
+	}
+
+	// Once the database recovers, the retried delivery activates the plan.
+	repo.getErr = nil
+	deliver(t, h, "checkout.session.completed", tCheckout, checkoutObject("sub_1"))
+	if u := repo.users["user-1"]; u.SubscriptionPlan != "pro" || u.SubscriptionStatus != "active" {
+		t.Fatalf("plan=%q status=%q after retry, want pro/active", u.SubscriptionPlan, u.SubscriptionStatus)
 	}
 }

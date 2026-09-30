@@ -48,6 +48,10 @@ Local check commands:
   Resubscribing (new subscription ID, newer event) still activates.
   5 new tests with locally signed fixtures (stale checkout after cancel,
   same-second checkout, out-of-order `updated`, resubscribe, unknown user).
+- Backend (review fix): `checkout.session.completed` acknowledges only a
+  genuinely missing user (`sql.ErrNoRows`); any other `GetByID` error now
+  returns 500 so Stripe retries instead of silently dropping a paid
+  activation. Test with a failing repo stub, then a successful retry.
 
 ## Done in pass 2
 - Backend: `customer.subscription.updated/deleted` now update the owning

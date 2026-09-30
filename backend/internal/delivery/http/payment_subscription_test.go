@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,6 +23,7 @@ type fakeUserRepo struct {
 	users     map[string]*domain.User
 	updates   int
 	updateErr error
+	getErr    error // when set, GetByID fails with it (simulated DB outage)
 }
 
 func newFakeUserRepo(users ...*domain.User) *fakeUserRepo {
@@ -34,9 +36,13 @@ func newFakeUserRepo(users ...*domain.User) *fakeUserRepo {
 
 func (r *fakeUserRepo) Create(_ context.Context, u *domain.User) error { r.users[u.ID] = u; return nil }
 func (r *fakeUserRepo) GetByID(_ context.Context, id string) (*domain.User, error) {
+	if r.getErr != nil {
+		return nil, r.getErr
+	}
 	u, ok := r.users[id]
 	if !ok {
-		return nil, errors.New("not found")
+		// Mirrors sqlx GetContext on the postgres repository.
+		return nil, sql.ErrNoRows
 	}
 	c := *u
 	return &c, nil
