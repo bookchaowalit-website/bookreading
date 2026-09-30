@@ -21,39 +21,27 @@ from agentic_translator import (
     TerminologyTerm,
     NovelContext,
     ChapterContext,
-    TranslationResult,
     create_translator,
 )
 
 # Import multi-agent translator
 from multi_agent_translator import (
     TranslationPipeline,
-    ReviewQueueManager,
-    ReviewQueueItem,
-    QualityScore,
-    PipelineResult,
     CharacterInfo,
-    QualityGrade,
-    ReviewStatus,
     create_pipeline,
     review_queue,
 )
 
 # Import database manager
 from db_manager import (
-    DatabaseManager,
     get_db_manager,
-    close_db,
 )
 
 # Import improved translation pipeline
-from improved_pipeline import ImprovedTranslationPipeline
 from translation_cache import translation_cache
 from manga_translator import (
     MangaTranslationPipeline,
     MangaTranslationContext,
-    MangaTranslationResult,
-    TextRegion,
     SourceLanguage,
     create_manga_translator,
     EASYOCR_AVAILABLE,
@@ -372,7 +360,7 @@ def translate_with_google(text: str, source_lang: str, target_lang: str) -> str:
             print(f"deep_translator failed: {e}")
 
         # Return original if all methods fail
-        print(f"All translation methods failed for chunk")
+        print("All translation methods failed for chunk")
         return chunk
 
     if len(processed_text) > max_chars:
@@ -450,7 +438,7 @@ async def fetch_piaotia_page(client: httpx.AsyncClient, url: str) -> str:
     # Try to decode with GBK encoding (common for Chinese sites)
     try:
         return response.content.decode('gbk')
-    except:
+    except Exception:
         return response.text
 
 
@@ -840,7 +828,7 @@ def extract_terms_from_text(text: str, source_lang: str, target_lang: str) -> Li
             # Try to translate the term
             try:
                 translation = translate_with_google(term, source_lang, target_lang)
-            except:
+            except Exception:
                 translation = term
             
             terms.append(ExtractedTerm(
@@ -857,7 +845,7 @@ def extract_terms_from_text(text: str, source_lang: str, target_lang: str) -> Li
 
 
 # Import Korean scraper
-from korean_scraper import scrape_korean_novel, SUPPORTED_KOREAN_SITES
+from korean_scraper import scrape_korean_novel
 
 # API Endpoints
 @app.post("/scrape", response_model=ScrapeResponse)
@@ -1003,7 +991,7 @@ async def scrape_69shu_novel(url: str) -> ScrapeResponse:
         response.raise_for_status()
         try:
             content = response.content.decode('gbk')
-        except:
+        except Exception:
             content = response.text
 
     soup = BeautifulSoup(content, 'lxml')
@@ -1129,7 +1117,7 @@ async def scrape_generic_novel(url: str) -> ScrapeResponse:
         response.raise_for_status()
         try:
             content = response.content.decode('gbk')
-        except:
+        except Exception:
             content = response.text
 
     soup = BeautifulSoup(content, 'lxml')
@@ -1763,7 +1751,6 @@ async def get_pending_reviews(novel_id: Optional[str] = None, limit: int = 20):
                 "grade": item.quality_score.grade.value,
                 "overall_score": item.quality_score.overall_score,
                 "issues": item.quality_score.issues,
-                "strengths": item.quality_score.strengths,
                 "priority": item.priority,
                 "created_at": item.created_at.isoformat(),
             }
@@ -1896,7 +1883,6 @@ async def get_review_item(item_id: str):
             "accuracy_score": item.quality_score.accuracy_score,
             "dialogue_score": item.quality_score.dialogue_score,
             "issues": item.quality_score.issues,
-                "strengths": item.quality_score.strengths,
             "strengths": item.quality_score.strengths,
             "status": item.status.value,
             "priority": item.priority,
@@ -2737,10 +2723,10 @@ async def fetch_generic_manga(url: str) -> dict:
         # Try to decode with different encodings
         try:
             content = response.content.decode('utf-8')
-        except:
+        except Exception:
             try:
                 content = response.content.decode('gbk')
-            except:
+            except Exception:
                 content = response.text
 
         soup = BeautifulSoup(content, 'lxml')
@@ -2813,6 +2799,10 @@ async def translate_manga_from_url(request: MangaTranslateURLRequest):
         if not openai_key and not gemini_key:
             raise HTTPException(status_code=400, detail="API key required. Please add your OpenAI or Gemini API key in Settings.")
         
+        # Resolve the provider before validating it (it was previously read
+        # before assignment, raising UnboundLocalError on every request).
+        provider = request.provider or os.getenv("LLM_PROVIDER", "openai").lower()
+
         # Validate selected provider has a key
         provider_lower = provider.lower() if provider else "openai"
         if provider_lower == "openai" and not openai_key:
@@ -2820,7 +2810,6 @@ async def translate_manga_from_url(request: MangaTranslateURLRequest):
         if provider_lower == "gemini" and not gemini_key:
             raise HTTPException(status_code=400, detail="Gemini API key required for Gemini provider.")
 
-        provider = request.provider or os.getenv("LLM_PROVIDER", "openai").lower()
         translator = get_manga_translator(
             source_lang=request.source_lang,
             provider=provider,

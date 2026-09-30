@@ -4,7 +4,6 @@ Defines all API endpoints.
 """
 
 from fastapi import FastAPI, HTTPException
-from typing import List, Optional
 
 # Import from other modules
 from scrapers import (
@@ -17,7 +16,6 @@ from scrapers import (
 from terminology import (
     get_known_terminology,
     extract_terms_from_text,
-    ExtractedTerm,
 )
 
 

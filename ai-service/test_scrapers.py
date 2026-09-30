@@ -2,7 +2,6 @@
 Tests for scrapers module.
 """
 
-import pytest
 from scrapers import (
     detect_site_type,
     ScrapedChapter,

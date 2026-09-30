@@ -11,10 +11,8 @@ Features:
 - Human Review Queue: Store translations pending approval
 """
 
-import os
 import re
 import json
-import asyncio
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
@@ -27,7 +25,6 @@ from openai import AsyncOpenAI
 # Note: If Gemini support is needed, use: from google import genai
 
 # Fallback
-from deep_translator import GoogleTranslator
 
 
 # ==================== ENUMS & DATACLASSES ====================
@@ -563,8 +560,6 @@ class QualityAgent:
     
     async def score(self, translated: str, original: str, context: NovelContext) -> QualityScore:
         """Score translation quality"""
-        import time
-        start_time = time.time()
         
         prompt = self._build_scoring_prompt(translated, original, context)
         
@@ -672,7 +667,6 @@ class TranslationPipeline:
         chunks = self._split_chunks(cleaned_text)
         
         all_translated = []
-        all_quality_scores = []
         
         for chunk in chunks:
             # Agent 1: Translation

@@ -25,36 +25,20 @@ jobs:
           cache: 'pip'
           cache-dependency-path: ai-service/requirements.txt
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install ruff mypy
-          pip install -r ai-service/requirements.txt
+      - name: Install ruff
+        run: pip install "ruff==0.16.9"
 
+      # Rules are pinned in ai-service/ruff.toml. `ruff format --check` is not
+      # enforced yet: the code base predates the formatter (see UPGRADE-PLAN).
       - name: Run ruff linter
-        run: ruff check ai-service/
-
-      - name: Run ruff formatter check
-        run: ruff format --check ai-service/
+        run: ruff check .
+        working-directory: ai-service
 
   test:
     name: Test
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: bookreading
-          POSTGRES_PASSWORD: testpassword
-          POSTGRES_DB: bookreading_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
+    # Unit tests need no database or network; integration tests are
+    # deselected by pytest.ini (`-m "not integration"`).
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -69,18 +53,18 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pytest-cov pytest-asyncio
-          pip install -r ai-service/requirements.txt
+          pip install pytest-cov
+          pip install -r requirements.txt
+        working-directory: ai-service
 
       - name: Run tests
-        run: pytest ai-service/ -v --cov=. --cov-report=xml
-        env:
-          DATABASE_URL: postgres://bookreading:testpassword@localhost:5432/bookreading_test?sslmode=disable
+        run: pytest -v --cov=. --cov-report=xml
+        working-directory: ai-service
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          file: coverage.xml
+          files: ai-service/coverage.xml
           flags: ai-service
           fail_ci_if_error: false
 

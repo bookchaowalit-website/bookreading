@@ -6,10 +6,9 @@ Tests for improved AI pipeline components:
 """
 
 import pytest
-import asyncio
-from translation_cache import TranslationCache, translation_cache
-from context_manager import EnhancedContextManager, CharacterInfo
-from smart_chunker import SmartChunker, TextChunk
+from translation_cache import TranslationCache
+from context_manager import EnhancedContextManager
+from smart_chunker import SmartChunker
 
 
 class TestTranslationCache:

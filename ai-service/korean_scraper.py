@@ -7,7 +7,7 @@ import asyncio
 import httpx
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
-from typing import List, Dict, Optional
+from typing import List
 from pydantic import BaseModel
 
 

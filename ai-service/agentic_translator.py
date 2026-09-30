@@ -7,11 +7,9 @@ ENFORCED TERMINOLOGY: Uses placeholder replacement to prevent inconsistent name 
 
 import os
 import re
-import json
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
-import asyncio
 
 # OpenAI
 from openai import AsyncOpenAI
@@ -538,7 +536,7 @@ class AgenticTranslator:
                     fallback = translator.translate(chunk[:4500] if len(chunk) > 4500 else chunk)
                     # Post-process placeholders
                     fallback = self._postprocess_terminology_from_llm(fallback, placeholders)
-                except:
+                except Exception:
                     fallback = self._postprocess_terminology_from_llm(chunk, placeholders)
                 all_literal.append(fallback)
                 all_polished.append(fallback)

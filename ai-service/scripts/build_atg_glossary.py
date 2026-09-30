@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import csv
 import re
-from html import unescape
 from pathlib import Path
 
 from pypinyin import Style, lazy_pinyin

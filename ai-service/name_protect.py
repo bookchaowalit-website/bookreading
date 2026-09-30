@@ -7,7 +7,7 @@ Replace those spans with placeholders first, then restore Thai after translate.
 from __future__ import annotations
 
 import re
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, Tuple
 
 from pypinyin import Style, lazy_pinyin
 

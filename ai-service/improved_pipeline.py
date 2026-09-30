@@ -4,14 +4,13 @@ Integrates: Caching + Enhanced Context + Smart Chunking
 Drops-in replacement for basic translation with significant quality and cost improvements.
 """
 
-import os
 import time
 from typing import List, Dict, Optional
 
 from agentic_translator import AgenticTranslator, LLMProvider, NovelContext, TranslationResult
 from translation_cache import translation_cache
 from context_manager import EnhancedContextManager
-from smart_chunker import SmartChunker, TextChunk
+from smart_chunker import SmartChunker
 
 
 class ImprovedTranslationPipeline:
@@ -153,20 +152,8 @@ class ImprovedTranslationPipeline:
         provider: Optional[str] = None,
     ) -> TranslationResult:
         """Translate a single chunk with context"""
-        # Build the prompt with context
-        system_prompt = f"""You are a professional Chinese-to-Thai novel translator.
-
-{context}
-
-RULES:
-1. Translate the text maintaining the tone and style of the novel.
-2. Use the terminology provided EXACTLY as specified.
-3. Keep dialogue natural and flowing in Thai.
-4. Preserve paragraph structure.
-5. Do NOT add translator notes or explanations in the output."""
-
-        user_prompt = f"Translate this chapter excerpt:\n\n{chunk_text}"
-        
+        # Context and terminology are passed to the translator via
+        # novel_context/context_text; it builds its own prompts.
         # Call the translator
         result = await self.translator.translate_with_context(
             text=chunk_text,
