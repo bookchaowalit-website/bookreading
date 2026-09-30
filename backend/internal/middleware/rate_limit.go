@@ -3,6 +3,8 @@ package middleware
 import (
 	"net"
 	"net/http"
+	"net/netip"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -122,29 +124,114 @@ func RateLimitMiddleware(next http.Handler, limiter *RateLimiter) http.Handler {
 }
 
 // getClientIP extracts the client IP from the request.
-// Forwarding headers are trusted as-is (the service is expected to run behind
-// a reverse proxy that sets them); only the first X-Forwarded-For hop is used,
-// and the port is stripped from RemoteAddr so each new TCP connection from
-// the same client shares one bucket.
+//
+// Forwarding headers are honored only when the direct peer (RemoteAddr) is a
+// trusted proxy, so a client connecting directly cannot pick its own rate
+// limit bucket by sending X-Forwarded-For. Trusted proxies come from the
+// TRUSTED_PROXIES env var (comma-separated IPs/CIDRs, or "*" to trust every
+// peer); when unset, loopback and private-network peers are trusted, which
+// covers Docker/Kubernetes reverse proxies. X-Forwarded-For is walked from the
+// right and the first untrusted hop wins, so client-supplied entries to the
+// left of the proxy's own entry are ignored. The port is stripped from
+// RemoteAddr so each new TCP connection from the same client shares a bucket.
 func getClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header (for proxied requests)
+	remote := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(remote); err == nil {
+		remote = host
+	}
+
+	proxies := loadTrustedProxies()
+	if !proxies.contains(remote) {
+		return remote
+	}
+
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		first := strings.TrimSpace(strings.Split(xff, ",")[0])
-		if first != "" {
-			return first
+		hops := strings.Split(xff, ",")
+		for i := len(hops) - 1; i >= 0; i-- {
+			hop := strings.TrimSpace(hops[i])
+			if hop == "" {
+				continue
+			}
+			if i == 0 || !proxies.contains(hop) {
+				return hop
+			}
 		}
 	}
 
-	// Check X-Real-IP header
 	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
 		return xri
 	}
+	return remote
+}
 
-	// Fall back to RemoteAddr without the ephemeral port
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return host
+type trustedProxies struct {
+	all      bool
+	prefixes []netip.Prefix
+}
+
+var defaultTrustedProxies = []string{"127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"}
+
+var (
+	trustedProxiesMu    sync.Mutex
+	trustedProxiesRaw   = "\x00" // sentinel: never a real env value
+	trustedProxiesCache trustedProxies
+)
+
+// loadTrustedProxies parses TRUSTED_PROXIES, caching by raw value so tests
+// (and a changed environment) pick up new settings without a restart.
+func loadTrustedProxies() trustedProxies {
+	raw := os.Getenv("TRUSTED_PROXIES")
+	trustedProxiesMu.Lock()
+	defer trustedProxiesMu.Unlock()
+	if raw == trustedProxiesRaw {
+		return trustedProxiesCache
 	}
-	return r.RemoteAddr
+	trustedProxiesRaw = raw
+	trustedProxiesCache = parseTrustedProxies(raw)
+	return trustedProxiesCache
+}
+
+func parseTrustedProxies(raw string) trustedProxies {
+	entries := defaultTrustedProxies
+	if strings.TrimSpace(raw) != "" {
+		entries = strings.Split(raw, ",")
+	}
+	var tp trustedProxies
+	for _, e := range entries {
+		e = strings.TrimSpace(e)
+		switch {
+		case e == "":
+			continue
+		case e == "*":
+			tp.all = true
+		case strings.Contains(e, "/"):
+			if p, err := netip.ParsePrefix(e); err == nil {
+				tp.prefixes = append(tp.prefixes, p.Masked())
+			}
+		default:
+			if a, err := netip.ParseAddr(e); err == nil {
+				tp.prefixes = append(tp.prefixes, netip.PrefixFrom(a, a.BitLen()))
+			}
+		}
+	}
+	return tp
+}
+
+func (tp trustedProxies) contains(ip string) bool {
+	if tp.all {
+		return true
+	}
+	a, err := netip.ParseAddr(ip)
+	if err != nil {
+		return false
+	}
+	a = a.Unmap()
+	for _, p := range tp.prefixes {
+		if p.Contains(a) {
+			return true
+		}
+	}
+	return false
 }
 
 // ApplyRateLimiting wraps a handler with rate limiting

@@ -46,16 +46,24 @@ func TestAllowSteadyTrickleIsNeverBlocked(t *testing.T) {
 
 func TestGetClientIP(t *testing.T) {
 	cases := []struct {
-		name, xff, xri, remote, want string
+		name, trusted, xff, xri, remote, want string
 	}{
-		{"remote strips port", "", "", "10.0.0.1:54321", "10.0.0.1"},
-		{"ipv6 remote strips port", "", "", "[::1]:8080", "::1"},
-		{"xff first hop", "203.0.113.5, 10.0.0.2", "", "10.0.0.1:1", "203.0.113.5"},
-		{"x-real-ip", "", " 198.51.100.7 ", "10.0.0.1:1", "198.51.100.7"},
-		{"remote without port", "", "", "10.0.0.9", "10.0.0.9"},
+		{"remote strips port", "", "", "", "10.0.0.1:54321", "10.0.0.1"},
+		{"ipv6 remote strips port", "", "", "", "[::1]:8080", "::1"},
+		{"remote without port", "", "", "", "10.0.0.9", "10.0.0.9"},
+		{"private proxy xff", "", "203.0.113.5", "", "10.0.0.1:1", "203.0.113.5"},
+		{"private proxy x-real-ip", "", "", " 198.51.100.7 ", "10.0.0.1:1", "198.51.100.7"},
+		{"direct public client cannot spoof xff", "", "1.2.3.4", "", "203.0.113.9:1", "203.0.113.9"},
+		{"direct public client cannot spoof x-real-ip", "", "", "1.2.3.4", "203.0.113.9:1", "203.0.113.9"},
+		{"spoofed left hop ignored", "", "1.2.3.4, 203.0.113.5", "", "10.0.0.1:1", "203.0.113.5"},
+		{"trusted hops skipped", "", "203.0.113.5, 10.0.0.2", "", "10.0.0.1:1", "203.0.113.5"},
+		{"explicit cidr list", "198.51.100.0/24", "203.0.113.5", "", "198.51.100.10:1", "203.0.113.5"},
+		{"explicit list excludes private", "198.51.100.0/24", "203.0.113.5", "", "10.0.0.1:1", "10.0.0.1"},
+		{"trust all", "*", "1.2.3.4", "", "203.0.113.9:1", "1.2.3.4"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("TRUSTED_PROXIES", c.trusted)
 			r := httptest.NewRequest(http.MethodGet, "/", nil)
 			r.RemoteAddr = c.remote
 			if c.xff != "" {
