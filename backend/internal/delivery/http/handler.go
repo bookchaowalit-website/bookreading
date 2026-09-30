@@ -644,6 +644,7 @@ func (h *Handler) GetTranslationHistory(w http.ResponseWriter, r *http.Request) 
 			limit = 50
 		}
 		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		limit, offset = domain.NormalizePage(limit, offset, 50)
 
 		histories, total, err := h.translationHistoryRepo.ListByNovelID(r.Context(), novelID, limit, offset)
 		if err != nil {

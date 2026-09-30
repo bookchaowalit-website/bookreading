@@ -43,6 +43,12 @@ Local check commands:
 - Consolidate the overlapping `ci.yml` and per-service workflows.
 
 ## Done in this pass (pass 4)
+- Backend list pagination is clamped before SQL (`domain.NormalizePage`):
+  a negative `limit`/`offset` made Postgres fail the request with a 500, and
+  `limit` had no ceiling (now 200). Applies to novels, chapters, translation
+  history and update history (`usecase/pagination_test.go`). The gRPC
+  server (behind the `generated_grpc` tag) benefits via the usecases; its
+  int32 `Page-1` arithmetic is still unguarded.
 - Backend: plans now charge configured Stripe Prices (`STRIPE_PRICE_PRO`,
   `STRIPE_PRICE_TEAM`) instead of inline `price_data` with hard-coded
   amounts. `LoadBillingPlans` validates at startup (fatal): IDs must look

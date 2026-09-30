@@ -40,6 +40,7 @@ func (uc *chapterUseCase) GetChapterByNumber(ctx context.Context, novelID string
 }
 
 func (uc *chapterUseCase) ListChapters(ctx context.Context, novelID string, limit, offset int) ([]*domain.Chapter, int, error) {
+	limit, offset = domain.NormalizePage(limit, offset, 50)
 	return uc.chapterRepo.ListByNovelID(ctx, novelID, limit, offset)
 }
 

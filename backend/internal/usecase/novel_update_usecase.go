@@ -134,9 +134,7 @@ func (uc *NovelUpdateUseCase) RunScheduledUpdates(ctx context.Context) (int, int
 
 // GetUpdateHistory returns update history for a novel
 func (uc *NovelUpdateUseCase) GetUpdateHistory(ctx context.Context, novelID string, limit int) ([]domain.NovelUpdateHistory, error) {
-	if limit <= 0 {
-		limit = 10
-	}
+	limit, _ = domain.NormalizePage(limit, 0, 10)
 	return uc.histRepo.GetByNovelID(novelID, limit)
 }
 
