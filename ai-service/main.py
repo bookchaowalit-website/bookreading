@@ -846,40 +846,29 @@ def extract_terms_from_text(text: str, source_lang: str, target_lang: str) -> Li
 
 # Import Korean scraper
 from korean_scraper import scrape_korean_novel
+from site_routing import (
+    detect_manga_site,
+    detect_novel_source,
+    host_matches,
+    is_webtoons_host,
+    url_host,
+)
 
 # API Endpoints
 @app.post("/scrape", response_model=ScrapeResponse)
 async def scrape_novel(request: ScrapeRequest):
     """Scrape a novel from supported sources (Chinese & Korean)"""
     try:
-        # Korean sources
-        if "munpia" in request.url or "munpia.com" in request.url:
-            return await scrape_korean_novel(request.url)
-        elif "ridibooks" in request.url or "ridibooks.com" in request.url:
-            return await scrape_korean_novel(request.url)
-        elif "series.naver.com" in request.url:
-            return await scrape_korean_novel(request.url)
-        elif "page.kakao.com" in request.url:
-            return await scrape_korean_novel(request.url)
-        elif "novelpia" in request.url or "novelpia.com" in request.url:
-            return await scrape_korean_novel(request.url)
-        # Chinese sources
-        elif "piaotia.com" in request.url:
-            return await scrape_piaotia_novel(request.url)
-        elif "qidian.com" in request.url or "qidian.qq.com" in request.url:
-            return await scrape_qidian_novel(request.url)
-        elif "69shu.com" in request.url:
-            return await scrape_69shu_novel(request.url)
-        elif "zongheng.com" in request.url:
-            return await scrape_zongheng_novel(request.url)
-        elif "17k.com" in request.url:
-            return await scrape_17k_novel(request.url)
-        else:
-            # Try generic scraping - detect if Korean or Chinese
-            if any(kw in request.url.lower() for kw in ['ko', 'korean', 'munpia', 'ridibooks', 'naver', 'kakao']):
-                return await scrape_korean_novel(request.url)
-            else:
-                return await scrape_generic_novel(request.url)
+        source = detect_novel_source(request.url)
+        scrapers = {
+            "korean": scrape_korean_novel,
+            "piaotia": scrape_piaotia_novel,
+            "qidian": scrape_qidian_novel,
+            "69shu": scrape_69shu_novel,
+            "zongheng": scrape_zongheng_novel,
+            "17k": scrape_17k_novel,
+        }
+        return await scrapers.get(source, scrape_generic_novel)(request.url)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Scraping failed: {str(e)}")
 
@@ -899,7 +888,7 @@ async def get_chapter_content(request: ChapterContentRequest):
     """Fetch content for a single chapter on-demand"""
     try:
         async with piaotia_http_client() as client:
-            if "piaotia.com" in request.url:
+            if detect_novel_source(request.url) == "piaotia":
                 content = await fetch_piaotia_page(client, request.url)
                 soup = BeautifulSoup(content, 'lxml')
                 
@@ -2371,68 +2360,21 @@ async def fetch_manga_from_url(request: MangaFetchRequest):
         chapter_number = None
         site_name = "Unknown"
 
-        # Detect site and fetch accordingly
-        if "webtoons.com" in url or "webtoon" in url:
-            result = await fetch_webtoons(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "Webtoons"
-        elif "mangadex.org" in url:
-            result = await fetch_mangadex(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "MangaDex"
-        elif "bato.to" in url or "batoto" in url:
-            result = await fetch_bato(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "Bato.to"
-        elif "mangakakalot" in url or "manganato" in url or "manganelo" in url:
-            result = await fetch_mangakakalot(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "MangaKakalot"
-        elif "toonily" in url:
-            result = await fetch_toonily(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "Toonily"
-        elif "asura" in url or "asurascans" in url:
-            result = await fetch_asura(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "Asura Scans"
-        elif "flame" in url or "flamecomics" in url:
-            result = await fetch_generic_manga(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "Flame Comics"
-        elif "reaperscans" in url:
-            result = await fetch_generic_manga(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "Reaper Scans"
-        elif "manhwa" in url or "manhua" in url:
-            result = await fetch_generic_manga(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "Manhwa/Manhua Site"
-        else:
-            # Generic fetch attempt
-            result = await fetch_generic_manga(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "Manga Site"
+        # Detect the site from the URL host (never from the path or query)
+        site = detect_manga_site(url)
+        fetchers = {
+            "webtoons": fetch_webtoons,
+            "mangadex": fetch_mangadex,
+            "bato": fetch_bato,
+            "mangakakalot": fetch_mangakakalot,
+            "toonily": fetch_toonily,
+            "asura": fetch_asura,
+        }
+        result = await fetchers.get(site.key, fetch_generic_manga)(url)
+        pages = result["pages"]
+        title = result["title"]
+        chapter_number = result.get("chapter_number")
+        site_name = site.name
 
         if not pages:
             raise HTTPException(status_code=400, detail="No images found at this URL")
@@ -2841,10 +2783,11 @@ async def translate_manga_from_url(request: MangaTranslateURLRequest):
         
         # Determine the correct referer for hotlink protection
         referer = request.url
-        if "webtoons.com" in request.url:
+        source_host = url_host(request.url)
+        if is_webtoons_host(request.url):
             # For Webtoons, use the main page as referer
             referer = "https://www.webtoons.com/"
-        elif "naver" in request.url or "phinf.pstatic.net" in request.url:
+        elif host_matches(source_host, "naver.com") or host_matches(source_host, "pstatic.net"):
             referer = "https://www.webtoons.com/"
         
         headers = {
@@ -2852,7 +2795,7 @@ async def translate_manga_from_url(request: MangaTranslateURLRequest):
             "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9,ko;q=0.8",
             "Referer": referer,
-            "Origin": "https://www.webtoons.com" if "webtoons.com" in request.url else "",
+            "Origin": "https://www.webtoons.com" if is_webtoons_host(request.url) else "",
         }
         
         async with httpx.AsyncClient(timeout=60, headers=headers) as client:

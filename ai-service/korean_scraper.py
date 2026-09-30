@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from typing import List
 from pydantic import BaseModel
+from site_routing import host_matches, url_host
 
 
 class ScrapedChapter(BaseModel):
@@ -54,16 +55,17 @@ async def fetch_page(client: httpx.AsyncClient, url: str) -> str:
 
 
 def detect_korean_site(url: str) -> str:
-    """Detect Korean novel site from URL."""
-    if "munpia.com" in url or "munpia" in url:
+    """Detect Korean novel site from the URL host (not the path or query)."""
+    host = url_host(url)
+    if "munpia" in host:
         return "munpia"
-    elif "ridibooks.com" in url:
+    elif host_matches(host, "ridibooks.com"):
         return "ridibooks"
-    elif "series.naver.com" in url:
+    elif host_matches(host, "series.naver.com"):
         return "naver"
-    elif "page.kakao.com" in url:
+    elif host_matches(host, "page.kakao.com"):
         return "kakao"
-    elif "novelpia" in url:
+    elif "novelpia" in host:
         return "novelpia"
     else:
         return "generic_korean"
