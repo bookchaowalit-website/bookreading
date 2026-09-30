@@ -102,8 +102,16 @@ export function parseTranslationError(error: any): TranslationError {
   // Check for specific error codes
   const code = error?.code || error?.response?.data?.code || error?.response?.data?.error;
 
-  if (code && translationErrors[code]) {
+  if (typeof code === 'string' && Object.prototype.hasOwnProperty.call(translationErrors, code)) {
     return translationErrors[code];
+  }
+
+  // Axios transport codes (no HTTP response at all)
+  if (error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT') {
+    return translationErrors['TIMEOUT'];
+  }
+  if (error?.code === 'ERR_NETWORK' || error?.code === 'ECONNREFUSED') {
+    return translationErrors['NETWORK_ERROR'];
   }
 
   // Check HTTP status codes
@@ -114,22 +122,27 @@ export function parseTranslationError(error: any): TranslationError {
   if (status === 429) {
     return translationErrors['RATE_LIMITED'];
   }
+  if (status === 504) {
+    return translationErrors['TIMEOUT'];
+  }
   if (status === 500 || status === 502 || status === 503) {
     return translationErrors['SERVER_ERROR'];
   }
 
-  // Check error message patterns
-  const message = error?.message || error?.response?.data?.error || '';
-  if (message.includes('timeout') || message.includes('ETIMEDOUT')) {
+  // Check error message patterns. Coerce to a lower-cased string: the
+  // payload may be an object, and axios reports "Network Error" (capital N).
+  const rawMessage = error?.message ?? error?.response?.data?.error ?? '';
+  const message = (typeof rawMessage === 'string' ? rawMessage : String(rawMessage)).toLowerCase();
+  if (message.includes('timeout') || message.includes('etimedout')) {
     return translationErrors['TIMEOUT'];
   }
-  if (message.includes('network') || message.includes('ECONNREFUSED')) {
+  if (message.includes('network') || message.includes('econnrefused')) {
     return translationErrors['NETWORK_ERROR'];
   }
   if (message.includes('quota') || message.includes('billing')) {
     return translationErrors['QUOTA_EXCEEDED'];
   }
-  if (message.includes('key') || message.includes('api_key') || message.includes('unauthorized')) {
+  if (message.includes('api key') || message.includes('api_key') || message.includes('unauthorized')) {
     return translationErrors['API_KEY_INVALID'];
   }
 

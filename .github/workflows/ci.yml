@@ -79,5 +79,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # docker-compose.yml requires .env and non-empty POSTGRES_PASSWORD /
+      # JWT_SECRET; the committed example has placeholders good enough to build.
+      - name: Prepare placeholder env
+        run: cp .env.example .env
+
       - name: Build Docker images
         run: docker compose build
