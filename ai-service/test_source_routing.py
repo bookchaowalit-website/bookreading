@@ -10,6 +10,7 @@ the site fetchers are monkeypatched.
 import pytest
 
 import main
+import url_safety
 from site_routing import detect_manga_site, detect_novel_source, host_matches, url_host
 
 
@@ -110,6 +111,16 @@ def novel_calls(monkeypatch):
         "scrape_generic_novel",
     ):
         monkeypatch.setattr(main, name, fake(name))
+
+    # Routing is under test here, not the SSRF guard (see test_url_safety.py):
+    # no real DNS, and the made-up hosts are allow-listed for this test only.
+    async def public_dns(host, port):
+        return ["93.184.216.34"]
+
+    monkeypatch.setattr(url_safety, "resolve_host", public_dns)
+    monkeypatch.setenv(
+        "SCRAPE_EXTRA_ALLOWED_HOSTS", "example-novels.test,novel.example.kr"
+    )
     return calls
 
 

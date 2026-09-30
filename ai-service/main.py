@@ -404,6 +404,8 @@ def apply_terminology(text: str, terminology: List[Term], source_lang: str, targ
 
 
 # Scraping functions
+from url_safety import UnsafeURLError, novel_allowed_domains, safe_get, validate_url
+
 PIAOTIA_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -413,8 +415,9 @@ PIAOTIA_HEADERS = {
 
 def piaotia_http_client() -> httpx.AsyncClient:
     """Browser-like client so Cloudflare/GBK novel sites do not reject the scraper."""
+    # Redirects are followed by url_safety.safe_get, which re-validates each hop.
     return httpx.AsyncClient(
-        follow_redirects=True,
+        follow_redirects=False,
         timeout=30.0,
         headers=PIAOTIA_HEADERS,
     )
@@ -433,8 +436,7 @@ async def fetch_piaotia_page(client: httpx.AsyncClient, url: str) -> str:
     
     last_request_time[domain] = asyncio.get_event_loop().time()
     
-    response = await client.get(url, timeout=30, headers=PIAOTIA_HEADERS)
-    response.raise_for_status()
+    response = await safe_get(client, url, headers=PIAOTIA_HEADERS)
     # Try to decode with GBK encoding (common for Chinese sites)
     try:
         return response.content.decode('gbk')
@@ -859,6 +861,7 @@ from site_routing import (
 async def scrape_novel(request: ScrapeRequest):
     """Scrape a novel from supported sources (Chinese & Korean)"""
     try:
+        await validate_url(request.url, novel_allowed_domains())
         source = detect_novel_source(request.url)
         scrapers = {
             "korean": scrape_korean_novel,
@@ -869,6 +872,10 @@ async def scrape_novel(request: ScrapeRequest):
             "17k": scrape_17k_novel,
         }
         return await scrapers.get(source, scrape_generic_novel)(request.url)
+    except UnsafeURLError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Scraping failed: {str(e)}")
 
@@ -887,6 +894,7 @@ class ChapterContentResponse(BaseModel):
 async def get_chapter_content(request: ChapterContentRequest):
     """Fetch content for a single chapter on-demand"""
     try:
+        await validate_url(request.url, novel_allowed_domains())
         async with piaotia_http_client() as client:
             if detect_novel_source(request.url) == "piaotia":
                 content = await fetch_piaotia_page(client, request.url)
@@ -914,6 +922,10 @@ async def get_chapter_content(request: ChapterContentRequest):
                 )
             else:
                 raise HTTPException(status_code=400, detail="Unsupported URL")
+    except UnsafeURLError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 429:
             raise HTTPException(status_code=429, detail="Rate limited. Please wait a moment and try again.")
@@ -928,7 +940,7 @@ async def scrape_qidian_novel(url: str) -> ScrapeResponse:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
-        response = await client.get(url, headers=headers, timeout=30)
+        response = await safe_get(client, url, headers=headers)
         response.raise_for_status()
         content = response.text
 
@@ -976,7 +988,7 @@ async def scrape_qidian_novel(url: str) -> ScrapeResponse:
 async def scrape_69shu_novel(url: str) -> ScrapeResponse:
     """Scrape novel from 69shu.com"""
     async with httpx.AsyncClient() as client:
-        response = await client.get(url, timeout=30)
+        response = await safe_get(client, url)
         response.raise_for_status()
         try:
             content = response.content.decode('gbk')
@@ -1020,7 +1032,7 @@ async def scrape_zongheng_novel(url: str) -> ScrapeResponse:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
-        response = await client.get(url, headers=headers, timeout=30)
+        response = await safe_get(client, url, headers=headers)
         response.raise_for_status()
         content = response.text
 
@@ -1061,7 +1073,7 @@ async def scrape_17k_novel(url: str) -> ScrapeResponse:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
-        response = await client.get(url, headers=headers, timeout=30)
+        response = await safe_get(client, url, headers=headers)
         response.raise_for_status()
         content = response.text
 
@@ -1102,7 +1114,7 @@ async def scrape_generic_novel(url: str) -> ScrapeResponse:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
-        response = await client.get(url, headers=headers, timeout=30)
+        response = await safe_get(client, url, headers=headers)
         response.raise_for_status()
         try:
             content = response.content.decode('gbk')

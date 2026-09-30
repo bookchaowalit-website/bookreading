@@ -58,7 +58,9 @@ services:
       dockerfile: Dockerfile
     container_name: bookreading-ai-service
     ports:
-      - "8000:8000"
+      # Loopback-only by default: the AI service has no auth of its own.
+      # Set AI_SERVICE_BIND=0.0.0.0 only behind an authenticating proxy.
+      - "${AI_SERVICE_BIND:-127.0.0.1}:8000:8000"
     env_file:
       - .env
     environment:

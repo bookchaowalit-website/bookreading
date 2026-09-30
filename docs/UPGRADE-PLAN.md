@@ -27,6 +27,12 @@ Local check commands:
   switching between them in the Stripe billing-portal configuration.
 
 ### P1
+- ai-service SSRF follow-ups: `/manga/fetch` and `/manga/translate-url`
+  (and the manga image downloads) still fetch caller URLs with
+  `follow_redirects=True`; route them through `url_safety.safe_get` with a
+  manga-host allow-list. Pin the connection to the validated IP to close the
+  DNS-rebinding window. The ai-service still has no auth: put it behind the
+  backend (service token) instead of exposing it.
 - Checkout sends `promptpay` with `mode=subscription`; verify Stripe supports
   it for recurring Prices in the account, otherwise drop it (checkout fails).
 - Frontend subscription page hard-codes plan cards/prices; render
@@ -42,7 +48,25 @@ Local check commands:
   warnings reported by `npm run lint`.
 - Consolidate the overlapping `ci.yml` and per-service workflows.
 
-## Done in this pass (pass 4)
+## Done in this pass (pass 5: SSRF)
+- `ai-service/url_safety.py`: `/scrape`, `/chapter` and every novel scraper
+  (piaotia incl. follow-up pages, qidian, 69shu, zongheng, 17k, generic,
+  Korean) fetch through `safe_get`: http/https on default ports only, no
+  userinfo/IP-literal hosts, host allow-list of supported novel sites
+  (+ `SCRAPE_EXTRA_ALLOWED_HOSTS`), DNS resolved and any
+  private/loopback/link-local/metadata/CGNAT/multicast address refused,
+  redirects re-validated hop by hop (max 5), 5 MB body cap, bounded
+  timeouts. Refusals return 400 (previously `/chapter` turned its own 400
+  into a 500).
+- `test_url_safety.py` (47 tests, DNS and HTTP mocked; suite verified with
+  `socket.getaddrinfo` disabled). Routing tests now mock DNS too.
+- `docker-compose.yml` publishes the ai-service on
+  `${AI_SERVICE_BIND:-127.0.0.1}:8000` (checked with `docker compose config`).
+- Third-party GitHub Actions in all workflows pinned to commit SHAs with a
+  `# vX.Y.Z` comment (resolved via `git ls-remote`).
+- Verified: `ruff check .`, `pytest` 107 passed.
+
+## Done in pass 4
 - Backend list pagination is clamped before SQL (`domain.NormalizePage`):
   a negative `limit`/`offset` made Postgres fail the request with a 500, and
   `limit` had no ceiling (now 200). Applies to novels, chapters, translation

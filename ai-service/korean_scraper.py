@@ -10,6 +10,7 @@ from urllib.parse import urljoin
 from typing import List
 from pydantic import BaseModel
 from site_routing import host_matches, url_host
+from url_safety import safe_get
 
 
 class ScrapedChapter(BaseModel):
@@ -45,11 +46,10 @@ async def fetch_page(client: httpx.AsyncClient, url: str) -> str:
         if elapsed < RATE_LIMIT_DELAY:
             await asyncio.sleep(RATE_LIMIT_DELAY - elapsed)
     
-    response = await client.get(url, headers={
+    response = await safe_get(client, url, headers={
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
     })
-    response.raise_for_status()
     last_request_time[domain] = time.time()
     return response.text
 
