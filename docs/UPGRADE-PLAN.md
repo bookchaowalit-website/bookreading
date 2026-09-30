@@ -4,7 +4,8 @@ Living backlog for improvement passes. Keep it short and actionable.
 
 ## Current state
 
-**Score: 6/10** (was 5/10). Three services build and their unit tests
+**Score: 7/10** (was 6/10 after pass 1, 5/10 originally). Billing lifecycle
+now round-trips through Stripe webhooks. Three services build and their unit tests
 pass locally; backend is golangci-lint clean; CI now runs the real checks.
 Large untested surface remains (ai-service `main.py` is ~3k lines, Go
 repositories/handlers have no DB-backed tests).
@@ -20,25 +21,20 @@ Local check commands:
 ## Backlog
 
 ### P0
-- Stripe `customer.subscription.updated/deleted` webhooks are acknowledged
-  but ignored: add `UserRepository.GetByStripeSubscriptionID` and update
-  `SubscriptionStatus` so cancellations take effect.
-- Checkout `SuccessURL`/`CancelURL` are hard-coded to `http://localhost:3000`
-  in `backend/internal/delivery/http/payment_handler.go`; read a
-  `FRONTEND_URL` env var (like `STRIPE_BILLING_PORTAL_RETURN_URL`).
+- Webhook ordering: `customer.subscription.updated` can arrive before
+  `checkout.session.completed`; it is acknowledged (user not yet linked) and
+  the later checkout event sets `active`. If Stripe ever sends a stale
+  checkout event after a cancel, the user is re-activated. Record
+  `event.Created` per user (or re-fetch the subscription) to order events.
+- Plans use `price_data` with fake price IDs (`price_pro_monthly`); move to
+  real Stripe Price IDs from env so the billing portal can switch plans.
 
 ### P1
-- `getClientIP` trusts `X-Forwarded-For`/`X-Real-IP` unconditionally; add a
-  `TRUSTED_PROXIES` setting so direct clients cannot spoof their bucket.
-- `ai-service/routes.py` is dead and fails to import (`ScrapeRequest` no
-  longer exists in `scrapers.py`); finish the split described in
-  `REFACTORING.md` or delete it.
 - Go: repository-layer tests against a throwaway Postgres (CI already has
   the service container pattern), starting with `user_repository.go`.
 - Frontend: tests for `sharing.ts`, `novels.ts`, `offline-storage.ts`.
-- `.github/workflows/docker-build.yml` pushes to Docker Hub on `main`; it
-  fails if `DOCKERHUB_*` secrets are missing. Gate the login/push on the
-  secret being present or remove the workflow.
+- Frontend subscription page shows raw `past_due`/`incomplete`/`canceled`
+  statuses; add Thai labels next to the existing `active`/`canceling`.
 
 ### P2
 - Adopt `ruff format` for ai-service in one mechanical commit, then add
@@ -47,7 +43,26 @@ Local check commands:
   warnings reported by `npm run lint`.
 - Consolidate the overlapping `ci.yml` and per-service workflows.
 
-## Done in this pass (2026-09-30)
+## Done in this pass (pass 2)
+- Backend: `customer.subscription.updated/deleted` now update the owning
+  user (lookup via new `UserRepository.GetByStripeSubscriptionID`): deleted or
+  canceled -> plan `free`/status `canceled`; cancel-at-period-end ->
+  `canceling`; resumed -> `active`; past_due/unpaid/paused -> `past_due`.
+  Idempotent (no-op writes skipped), unknown subscriptions acknowledged,
+  DB failures return 500 so Stripe retries. Tests use locally signed Stripe
+  fixtures (`webhook.GenerateTestSignedPayload`), no network.
+- Migration 007 + `init.sql`: index on `users.stripe_subscription_id`.
+- Checkout success/cancel URLs read `FRONTEND_URL` (default
+  `http://localhost:3000`); documented in `.env.example`/compose.
+- Rate limiter: forwarding headers honored only from `TRUSTED_PROXIES`
+  (default loopback + private ranges); XFF walked right-to-left so spoofed
+  left-most hops are ignored. 12 table tests.
+- ai-service: removed dead `routes.py` (failed to import, duplicated
+  `/scrape` and `/chapter` in `main.py`); `REFACTORING.md` updated.
+- `docker-build.yml`: login/push only when `DOCKERHUB_*` secrets exist;
+  otherwise images are still built.
+
+## Done in pass 1 (2026-09-30)
 - Backend: Stripe webhook no longer panics on chunked bodies, refuses
   events when `STRIPE_WEBHOOK_SECRET` is unset, caps body size, guards a
   nil subscription and returns 500 on persistence failure.

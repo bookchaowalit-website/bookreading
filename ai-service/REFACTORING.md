@@ -7,9 +7,11 @@
 ## Completed Modules
 ✅ `scrapers.py` - Web novel scraping logic
 ✅ `terminology.py` - Terminology management
-✅ `routes.py` - Basic route definitions (needs expansion)
 
 ## Remaining Modules to Create
+- [ ] `scrape_routes.py` - Scraping endpoints (/scrape, /chapter). An earlier
+  `routes.py` draft duplicated these but no longer imported; it was removed.
+  Extract from `main.py` again and cover it with a route test before wiring it.
 - [ ] `translation_routes.py` - Translation endpoints (/translate, /translate/agentic)
 - [ ] `context_routes.py` - Context management endpoints (/context/*)
 - [ ] `review_routes.py` - Review queue endpoints (/review/*)
@@ -34,8 +36,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
 
-from routes import register_routes
-from scrapers import register_scraper_routes
+from scrape_routes import register_scrape_routes
 from translation_routes import register_translation_routes
 from manga_routes import register_manga_routes
 from review_routes import register_review_routes
@@ -54,7 +55,7 @@ app.add_middleware(
 )
 
 # Register routes
-register_routes(app)
+register_scrape_routes(app)
 
 # Startup/shutdown events
 @app.on_event("startup")
