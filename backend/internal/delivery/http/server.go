@@ -67,7 +67,8 @@ func NewServerDependencies(db *sqlx.DB) *ServerDependencies {
 	if aiServiceURL == "" {
 		aiServiceURL = "http://localhost:8000"
 	}
-	aiClient := aiservice.NewAIServiceClient(aiServiceURL)
+	// AI_SERVICE_TOKEN is the optional shared secret ai-service checks.
+	aiClient := aiservice.NewAIServiceClient(aiServiceURL, os.Getenv("AI_SERVICE_TOKEN"))
 
 	// Initialize usecases
 	jwtSecret := os.Getenv("JWT_SECRET")

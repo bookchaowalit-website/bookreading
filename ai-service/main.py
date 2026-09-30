@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict
@@ -56,7 +56,15 @@ import base64
 RATE_LIMIT_DELAY = 1.0  # seconds between requests to same domain
 last_request_time = {}
 
-app = FastAPI(title="BookReading AI Service", version="1.0.0")
+from service_auth import require_service_token
+
+# Every route requires the shared bearer token when AI_SERVICE_TOKEN is set
+# (health/metadata routes excepted; see service_auth.PUBLIC_PATHS).
+app = FastAPI(
+    title="BookReading AI Service",
+    version="1.0.0",
+    dependencies=[Depends(require_service_token)],
+)
 
 # CORS Configuration - read from environment variable
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
@@ -404,7 +412,17 @@ def apply_terminology(text: str, terminology: List[Term], source_lang: str, targ
 
 
 # Scraping functions
-from url_safety import UnsafeURLError, novel_allowed_domains, safe_get, validate_url
+from url_safety import (
+    UnsafeURLError,
+    manga_image_domains,
+    manga_page_domains,
+    novel_allowed_domains,
+    safe_get,
+    validate_url,
+)
+
+# Webtoon strips are tall; allow bigger bodies for page images than for HTML.
+MAX_MANGA_IMAGE_BYTES = 20 * 1024 * 1024
 
 PIAOTIA_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -2372,6 +2390,9 @@ async def fetch_manga_from_url(request: MangaFetchRequest):
         chapter_number = None
         site_name = "Unknown"
 
+        # Only allow-listed manga hosts that resolve to public addresses.
+        await validate_url(url, manga_page_domains())
+
         # Detect the site from the URL host (never from the path or query)
         site = detect_manga_site(url)
         fetchers = {
@@ -2405,8 +2426,15 @@ async def fetch_manga_from_url(request: MangaFetchRequest):
             site_name=site_name,
         )
 
+    except UnsafeURLError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Manga site returned HTTP {e.response.status_code}",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch manga: {str(e)}")
 
@@ -2427,7 +2455,21 @@ async def fetch_webtoons(url: str) -> dict:
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             )
             page = await context.new_page()
-            
+
+            async def block_offsite_navigation(route):
+                # The browser resolves DNS itself, so at least keep every
+                # navigation (incl. redirects) on allow-listed manga hosts.
+                req = route.request
+                allowed = manga_page_domains()
+                if req.is_navigation_request() and not any(
+                    host_matches(url_host(req.url), d) for d in allowed
+                ):
+                    await route.abort()
+                else:
+                    await route.continue_()
+
+            await page.route("**/*", block_offsite_navigation)
+
             try:
                 await page.goto(url, wait_until="networkidle", timeout=60000)
                 
@@ -2464,8 +2506,7 @@ async def fetch_webtoons(url: str) -> dict:
                 "Referer": "https://www.webtoons.com/",
                 "Origin": "https://www.webtoons.com",
             }
-            response = await client.get(url, headers=headers, timeout=30)
-            response.raise_for_status()
+            response = await safe_get(client, url, allowed_domains=manga_page_domains(), headers=headers)
 
             soup = BeautifulSoup(response.text, 'lxml')
 
@@ -2503,8 +2544,9 @@ async def fetch_mangadex(url: str) -> dict:
 
         # Get chapter data from MangaDex API
         api_url = f"https://api.mangadex.org/at-home/server/{chapter_id}"
-        api_response = await client.get(api_url, headers=headers, timeout=30)
-        api_response.raise_for_status()
+        api_response = await safe_get(
+            client, api_url, allowed_domains=manga_page_domains(), headers=headers
+        )
         chapter_data = api_response.json()
 
         base_url = chapter_data["baseUrl"]
@@ -2516,8 +2558,13 @@ async def fetch_mangadex(url: str) -> dict:
 
         # Get manga title
         manga_url = f"https://api.mangadex.org/chapter/{chapter_id}?includes[]=manga"
-        manga_response = await client.get(manga_url, headers=headers, timeout=30)
-        manga_data = manga_response.json()
+        try:
+            manga_response = await safe_get(
+                client, manga_url, allowed_domains=manga_page_domains(), headers=headers
+            )
+            manga_data = manga_response.json()
+        except (UnsafeURLError, httpx.HTTPError, ValueError):
+            manga_data = {}  # the title is optional; the images already resolved
 
         title = "Unknown"
         for rel in manga_data.get("data", {}).get("relationships", []):
@@ -2535,8 +2582,7 @@ async def fetch_bato(url: str) -> dict:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
-        response = await client.get(url, headers=headers, timeout=30, follow_redirects=True)
-        response.raise_for_status()
+        response = await safe_get(client, url, allowed_domains=manga_page_domains(), headers=headers)
 
         soup = BeautifulSoup(response.text, 'lxml')
 
@@ -2567,8 +2613,7 @@ async def fetch_mangakakalot(url: str) -> dict:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
-        response = await client.get(url, headers=headers, timeout=30, follow_redirects=True)
-        response.raise_for_status()
+        response = await safe_get(client, url, allowed_domains=manga_page_domains(), headers=headers)
 
         soup = BeautifulSoup(response.text, 'lxml')
 
@@ -2605,8 +2650,7 @@ async def fetch_toonily(url: str) -> dict:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Referer": url,
         }
-        response = await client.get(url, headers=headers, timeout=30, follow_redirects=True)
-        response.raise_for_status()
+        response = await safe_get(client, url, allowed_domains=manga_page_domains(), headers=headers)
 
         soup = BeautifulSoup(response.text, 'lxml')
 
@@ -2637,8 +2681,7 @@ async def fetch_asura(url: str) -> dict:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Referer": url,
         }
-        response = await client.get(url, headers=headers, timeout=30, follow_redirects=True)
-        response.raise_for_status()
+        response = await safe_get(client, url, allowed_domains=manga_page_domains(), headers=headers)
 
         soup = BeautifulSoup(response.text, 'lxml')
 
@@ -2672,7 +2715,7 @@ async def fetch_generic_manga(url: str) -> dict:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
-        response = await client.get(url, headers=headers, timeout=30, follow_redirects=True)
+        response = await safe_get(client, url, allowed_domains=manga_page_domains(), headers=headers)
 
         # Try to decode with different encodings
         try:
@@ -2810,12 +2853,18 @@ async def translate_manga_from_url(request: MangaTranslateURLRequest):
             "Origin": "https://www.webtoons.com" if is_webtoons_host(request.url) else "",
         }
         
+        headers = {k: v for k, v in headers.items() if v}
         async with httpx.AsyncClient(timeout=60, headers=headers) as client:
             for page_info in fetch_result.pages:
                 try:
-                    # Download image with headers (client already has headers set)
-                    img_response = await client.get(page_info.image_url, follow_redirects=True)
-                    img_response.raise_for_status()
+                    # Download through the SSRF guard: only manga hosts and
+                    # their image CDNs, pinned to a validated public address.
+                    img_response = await safe_get(
+                        client,
+                        page_info.image_url,
+                        allowed_domains=manga_image_domains(),
+                        max_bytes=MAX_MANGA_IMAGE_BYTES,
+                    )
 
                     image = Image.open(BytesIO(img_response.content))
 
@@ -2843,6 +2892,12 @@ async def translate_manga_from_url(request: MangaTranslateURLRequest):
                         "regions_count": len(result.regions),
                     })
 
+                except UnsafeURLError as e:
+                    results.append({
+                        "page_number": page_info.page_number,
+                        "error": f"Image URL refused: {e}",
+                    })
+                    continue
                 except Exception as e:
                     print(f"Failed to translate page {page_info.page_number}: {e}")
                     results.append({
@@ -2878,13 +2933,13 @@ async def get_supported_manga_sites():
             },
             {
                 "name": "Bato.to",
-                "domains": ["bato.to", "batoto"],
+                "domains": ["bato.to"],
                 "example": "https://bato.to/title/.../chapter-...",
                 "notes": "Works well - Manhwa and Manga"
             },
             {
                 "name": "MangaKakalot / MangaNato",
-                "domains": ["mangakakalot.com", "manganato.com", "manganelo.com"],
+                "domains": ["mangakakalot.com", "manganato.com", "chapmanganato.to", "manganelo.com"],
                 "example": "https://mangakakalot.com/chapter/...",
                 "notes": "Works well - Large manga library"
             },
@@ -2896,7 +2951,7 @@ async def get_supported_manga_sites():
             },
             {
                 "name": "Asura Scans",
-                "domains": ["asurascans.com", "asuracomic.com"],
+                "domains": ["asuracomic.net", "asurascans.com"],
                 "example": "https://asurascans.com/.../chapter-...",
                 "notes": "Korean manhwa translations"
             },
@@ -2908,7 +2963,7 @@ async def get_supported_manga_sites():
             },
             {
                 "name": "Flame Comics",
-                "domains": ["flamecomics.com"],
+                "domains": ["flamecomics.xyz", "flamecomics.com"],
                 "example": "https://flamecomics.com/.../chapter-...",
                 "notes": "Korean manhwa scanlation"
             },
@@ -2920,9 +2975,9 @@ async def get_supported_manga_sites():
             },
             {
                 "name": "Other Manga Sites",
-                "domains": ["*"],
-                "example": "Any URL with manga images",
-                "notes": "Best effort - May work on other sites"
+                "domains": [],
+                "example": "Set MANGA_EXTRA_ALLOWED_HOSTS on the ai-service",
+                "notes": "Best effort - only hosts the operator allow-lists"
             }
         ]
     }

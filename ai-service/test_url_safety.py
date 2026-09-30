@@ -120,13 +120,13 @@ async def test_redirect_to_internal_host_is_refused(dns):
     seen = []
 
     def handler(request):
-        seen.append(str(request.url))
+        seen.append((request.headers["host"], request.url.path))
         return httpx.Response(302, headers={"location": "http://169.254.169.254/latest/"})
 
     async with mock_client(handler) as client:
         with pytest.raises(UnsafeURLError):
             await safe_get(client, "https://www.piaotia.com/a", allowed_domains=NOVEL)
-    assert seen == ["https://www.piaotia.com/a"]  # metadata URL never requested
+    assert seen == [("www.piaotia.com", "/a")]  # metadata URL never requested
 
 
 async def test_redirect_hop_is_revalidated_by_dns(dns):
@@ -134,7 +134,7 @@ async def test_redirect_hop_is_revalidated_by_dns(dns):
     dns["m.piaotia.com"] = ["192.168.0.10"]
 
     def handler(request):
-        if request.url.host == "www.piaotia.com":
+        if request.headers["host"] == "www.piaotia.com":
             return httpx.Response(301, headers={"location": "https://m.piaotia.com/a"})
         raise AssertionError("private hop must not be fetched")
 
@@ -187,6 +187,72 @@ async def test_error_status_raises_http_status_error(dns):
     async with mock_client(lambda r: httpx.Response(429)) as client:
         with pytest.raises(httpx.HTTPStatusError):
             await safe_get(client, "https://www.piaotia.com/", allowed_domains=NOVEL)
+
+
+async def test_connection_is_pinned_to_the_validated_address(dns):
+    """DNS rebinding: the name is resolved once per hop and never again."""
+    answers = iter([[PUBLIC_IP], ["127.0.0.1"]])
+    lookups = []
+
+    async def rebinding_resolve(host, port):
+        lookups.append(host)
+        return next(answers)
+
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(200, text="ok")
+
+    import unittest.mock as mock
+
+    with mock.patch.object(url_safety, "resolve_host", rebinding_resolve):
+        async with mock_client(handler) as client:
+            response = await safe_get(
+                client, "https://www.piaotia.com/a?x=1", allowed_domains=NOVEL
+            )
+    assert lookups == ["www.piaotia.com"]
+    [request] = seen
+    assert request.url.host == PUBLIC_IP  # connect target is the checked IP
+    assert request.url.raw_path == b"/a?x=1"
+    assert request.headers["host"] == "www.piaotia.com"
+    assert request.extensions["sni_hostname"] == "www.piaotia.com"
+    # Callers still see the logical URL, not the pinned address.
+    assert str(response.url) == "https://www.piaotia.com/a?x=1"
+
+
+async def test_pinned_request_handles_ipv6_and_plain_http(dns):
+    dns["www.piaotia.com"] = ["2606:4700::1111"]
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(200)
+
+    async with mock_client(handler) as client:
+        await safe_get(client, "http://www.piaotia.com/b", allowed_domains=NOVEL)
+    [request] = seen
+    assert request.url.host == "2606:4700::1111"
+    assert request.headers["host"] == "www.piaotia.com"
+    assert "sni_hostname" not in request.extensions  # no TLS on http
+
+
+async def test_caller_host_header_cannot_override_pin(dns):
+    dns["www.piaotia.com"] = [PUBLIC_IP]
+    seen = []
+
+    def handler(request):
+        seen.append(request.headers.get_list("host"))
+        return httpx.Response(200)
+
+    async with mock_client(handler) as client:
+        await safe_get(
+            client,
+            "https://www.piaotia.com/",
+            allowed_domains=NOVEL,
+            headers={"host": "internal.local"},
+        )
+    assert seen == [["www.piaotia.com"]]
 
 
 @pytest.fixture

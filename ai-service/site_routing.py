@@ -60,6 +60,25 @@ MANGA_SITES: tuple[MangaSite, ...] = (
 
 GENERIC_MANGA_SITE = MangaSite("generic", "Manga Site")
 
+# Explicit allow-list for outbound manga fetches (see url_safety). Brand
+# keywords above only pick a parser; they never make a host fetchable.
+# Operators add mirrors with MANGA_EXTRA_ALLOWED_HOSTS.
+SUPPORTED_MANGA_DOMAINS: tuple[str, ...] = (
+    "webtoons.com",
+    "mangadex.org",
+    "bato.to",
+    "mangakakalot.com",
+    "manganato.com",
+    "chapmanganato.to",
+    "manganelo.com",
+    "toonily.com",
+    "asuracomic.net",
+    "asurascans.com",
+    "flamecomics.xyz",
+    "flamecomics.com",
+    "reaperscans.com",
+)
+
 
 def detect_manga_site(url: str) -> MangaSite:
     host = url_host(url)

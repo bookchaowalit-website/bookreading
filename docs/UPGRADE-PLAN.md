@@ -27,12 +27,13 @@ Local check commands:
   switching between them in the Stripe billing-portal configuration.
 
 ### P1
-- ai-service SSRF follow-ups: `/manga/fetch` and `/manga/translate-url`
-  (and the manga image downloads) still fetch caller URLs with
-  `follow_redirects=True`; route them through `url_safety.safe_get` with a
-  manga-host allow-list. Pin the connection to the validated IP to close the
-  DNS-rebinding window. The ai-service still has no auth: put it behind the
-  backend (service token) instead of exposing it.
+- Frontend calls ai-service straight from the browser (`frontend/src/lib/api.ts`,
+  `admin/review/page.tsx`), so `AI_SERVICE_TOKEN` cannot be enabled without
+  breaking them. Proxy those calls through the Go backend (which already
+  sends the token), then turn the token on in production.
+- ai-service: Webtoons Playwright path resolves DNS inside Chromium; only
+  navigations are held to the allow-list. Consider dropping the browser path
+  or routing it through a pinned proxy.
 - Checkout sends `promptpay` with `mode=subscription`; verify Stripe supports
   it for recurring Prices in the account, otherwise drop it (checkout fails).
 - Frontend subscription page hard-codes plan cards/prices; render
@@ -48,7 +49,27 @@ Local check commands:
   warnings reported by `npm run lint`.
 - Consolidate the overlapping `ci.yml` and per-service workflows.
 
-## Done in this pass (pass 5: SSRF)
+## Done in this pass (pass 6: SSRF follow-ups + service auth)
+- `/manga/fetch` and `/manga/translate-url` fetch only through
+  `url_safety.safe_get`: chapter pages/site APIs are held to
+  `site_routing.SUPPORTED_MANGA_DOMAINS` (+ `MANGA_EXTRA_ALLOWED_HOSTS`);
+  page images additionally allow the known CDNs (`pstatic.net`,
+  `mangadex.network`, `uploads.mangadex.org`, + `MANGA_IMAGE_EXTRA_ALLOWED_HOSTS`).
+  Brand keywords only pick a parser, never make a host fetchable; the
+  catch-all "any manga site" fetch is gone. Refused image URLs become
+  per-page errors; refused page URLs return 400, upstream 4xx/5xx 502.
+- DNS rebinding closed: `safe_get` connects to the address it just validated
+  (IP-literal URL + original `Host` header + `sni_hostname` for TLS SNI and
+  certificate checks), so httpx never re-resolves. Note: an egress proxy
+  that only allow-lists hostnames will refuse CONNECT to IP literals.
+- Optional service auth: `AI_SERVICE_TOKEN` makes every non-health route
+  require `Authorization: Bearer` (constant-time compare,
+  `ai-service/service_auth.py`); the Go `aiservice` client sends it from env.
+- Tests: `test_manga_ssrf.py`, `test_service_auth.py`, pinning tests in
+  `test_url_safety.py`, Go `aiservice/client_test.go` (195 pytest passing
+  with `getaddrinfo` disabled; ruff; go vet, `go test -race`, golangci-lint).
+
+## Done in pass 5: SSRF
 - `ai-service/url_safety.py`: `/scrape`, `/chapter` and every novel scraper
   (piaotia incl. follow-up pages, qidian, 69shu, zongheng, 17k, generic,
   Korean) fetch through `safe_get`: http/https on default ports only, no

@@ -17,10 +17,15 @@ Every outbound fetch for those endpoints goes through :func:`safe_get`:
 * the body is streamed and cut off at :data:`MAX_RESPONSE_BYTES`, with
   bounded connect/read timeouts.
 
-Known residual risk: the check resolves DNS separately from httpx, so a
-rebinding DNS server could still answer differently for the real connection.
-The host allow-list is the primary control; pinning the connection to the
-validated address is tracked in docs/UPGRADE-PLAN.md.
+* the connection is **pinned** to an address that was just validated: the
+  request goes to that IP literal, with the original ``Host`` header and the
+  original hostname as TLS SNI / certificate name (httpcore's ``sni_hostname``
+  extension). httpx never re-resolves the name, so a DNS-rebinding server
+  cannot swap in an internal address between the check and the connection.
+
+Manga endpoints use the same guard with their own allow-lists
+(:func:`manga_page_domains` for chapter pages / site APIs and
+:func:`manga_image_domains`, which adds the image CDNs those sites serve from).
 """
 
 from __future__ import annotations
@@ -33,7 +38,7 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
-from site_routing import host_matches, url_host
+from site_routing import SUPPORTED_MANGA_DOMAINS, host_matches, url_host
 
 # Hosts the novel scrapers understand (see site_routing.detect_novel_source).
 SUPPORTED_NOVEL_DOMAINS: tuple[str, ...] = (
@@ -53,6 +58,14 @@ SUPPORTED_NOVEL_DOMAINS: tuple[str, ...] = (
     "17k.com",
 )
 
+# Image CDNs the supported manga sites serve page images from. Only images are
+# fetched from these hosts, never chapter pages.
+MANGA_IMAGE_CDN_DOMAINS: tuple[str, ...] = (
+    "pstatic.net",  # webtoon-phinf.pstatic.net (Webtoons / Naver)
+    "mangadex.network",  # MangaDex@Home nodes returned by /at-home/server
+    "uploads.mangadex.org",
+)
+
 MAX_REDIRECTS = 5
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
 FETCH_TIMEOUT = httpx.Timeout(connect=10.0, read=20.0, write=10.0, pool=10.0)
@@ -69,12 +82,30 @@ class UnsafeURLError(ValueError):
 
 
 def extra_allowed_hosts() -> tuple[str, ...]:
-    raw = os.getenv("SCRAPE_EXTRA_ALLOWED_HOSTS", "")
-    return tuple(h.strip().lower().rstrip(".") for h in raw.split(",") if h.strip())
+    return _env_hosts("SCRAPE_EXTRA_ALLOWED_HOSTS")
 
 
 def novel_allowed_domains() -> tuple[str, ...]:
     return SUPPORTED_NOVEL_DOMAINS + extra_allowed_hosts()
+
+
+def _env_hosts(name: str) -> tuple[str, ...]:
+    raw = os.getenv(name, "")
+    return tuple(h.strip().lower().rstrip(".") for h in raw.split(",") if h.strip())
+
+
+def manga_page_domains() -> tuple[str, ...]:
+    """Hosts /manga/fetch may read chapter pages or site APIs from."""
+    return SUPPORTED_MANGA_DOMAINS + _env_hosts("MANGA_EXTRA_ALLOWED_HOSTS")
+
+
+def manga_image_domains() -> tuple[str, ...]:
+    """Hosts /manga/translate-url may download page images from."""
+    return (
+        manga_page_domains()
+        + MANGA_IMAGE_CDN_DOMAINS
+        + _env_hosts("MANGA_IMAGE_EXTRA_ALLOWED_HOSTS")
+    )
 
 
 def is_public_ip(value: str) -> bool:
@@ -125,8 +156,12 @@ def check_url_shape(url: str, allowed_domains: tuple[str, ...]) -> tuple[str, in
     return host, default_port
 
 
-async def validate_url(url: str, allowed_domains: tuple[str, ...]) -> None:
-    """Raise :class:`UnsafeURLError` unless ``url`` is safe to fetch."""
+async def validate_url(url: str, allowed_domains: tuple[str, ...]) -> list[str]:
+    """Raise :class:`UnsafeURLError` unless ``url`` is safe to fetch.
+
+    Returns the validated addresses so the caller can pin the connection to
+    one of them instead of resolving the name again.
+    """
     host, port = check_url_shape(url, allowed_domains)
     try:
         addresses = await resolve_host(host, port)
@@ -134,6 +169,35 @@ async def validate_url(url: str, allowed_domains: tuple[str, ...]) -> None:
         raise UnsafeURLError("Could not resolve host") from exc
     if not addresses or not all(is_public_ip(a) for a in addresses):
         raise UnsafeURLError("Host resolves to a non-public address")
+    return addresses
+
+
+def pinned_request(
+    client: httpx.AsyncClient,
+    url: str,
+    address: str,
+    headers: dict[str, str] | None,
+) -> httpx.Request:
+    """A GET for ``url`` that connects to ``address`` without re-resolving.
+
+    The URL host is replaced by the IP literal; ``Host`` keeps the original
+    name (virtual hosting) and ``sni_hostname`` makes TLS send the original
+    name as SNI and verify the certificate against it.
+    """
+    original = httpx.URL(url)
+    host = original.host
+    request_headers = dict(headers or {})
+    request_headers = {k: v for k, v in request_headers.items() if k.lower() != "host"}
+    request_headers["Host"] = original.netloc.decode("ascii")
+    extensions = {"timeout": FETCH_TIMEOUT.as_dict()}
+    if original.scheme == "https":
+        extensions["sni_hostname"] = host
+    return client.build_request(
+        "GET",
+        original.copy_with(host=address.split("%", 1)[0]),
+        headers=request_headers,
+        extensions=extensions,
+    )
 
 
 async def _read_capped(response: httpx.Response, max_bytes: int) -> bytes:
@@ -157,28 +221,31 @@ async def _safe_get(
 ) -> httpx.Response:
     current = url
     for _ in range(MAX_REDIRECTS + 1):
-        await validate_url(current, allowed_domains)
-        async with client.stream(
-            "GET",
-            current,
-            headers=headers,
-            follow_redirects=False,
-            timeout=FETCH_TIMEOUT,
-        ) as response:
+        addresses = await validate_url(current, allowed_domains)
+        request = pinned_request(client, current, addresses[0], headers)
+        response = await client.send(request, stream=True, follow_redirects=False)
+        try:
+            # Report the logical URL (not the pinned IP) to callers.
+            logical_request = httpx.Request("GET", current, headers=request.headers)
             if response.is_redirect:
                 location = response.headers.get("location", "")
                 if not location:
                     raise UnsafeURLError("Redirect without a location")
                 current = urljoin(current, location)
                 continue
-            response.raise_for_status()
+            if response.is_error:
+                await response.aread()
+                response.request = logical_request
+                response.raise_for_status()
             body = await _read_capped(response, max_bytes)
             return httpx.Response(
                 response.status_code,
                 headers=response.headers,
                 content=body,
-                request=response.request,
+                request=logical_request,
             )
+        finally:
+            await response.aclose()
     raise UnsafeURLError("Too many redirects")
 
 

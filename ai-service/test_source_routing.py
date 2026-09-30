@@ -18,6 +18,16 @@ from site_routing import detect_manga_site, detect_novel_source, host_matches, u
 def manga_calls(monkeypatch):
     calls = []
 
+    async def public_dns(host, port):
+        return ["93.184.216.34"]
+
+    # /manga/fetch validates the host first; keep DNS offline. The generic
+    # fallback hosts below are operator-allowed so routing can be exercised.
+    monkeypatch.setattr(url_safety, "resolve_host", public_dns)
+    monkeypatch.setenv(
+        "MANGA_EXTRA_ALLOWED_HOSTS", "reader.example,mangadex.org.evil.example"
+    )
+
     def fake(name):
         async def _fetch(url):
             calls.append(name)
@@ -81,6 +91,22 @@ async def test_manga_fetch_routes_by_host(manga_calls, url, fetcher, site_name):
     result = await main.fetch_manga_from_url(main.MangaFetchRequest(url=url))
     assert manga_calls == [fetcher]
     assert result.site_name == site_name
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://reader.example/manhwa/x/1",
+        "https://mangadex.org.evil.example/chapter/abc",
+        "https://manhwa-mirror.example/x/1",  # brand keyword alone is not an allow
+    ],
+)
+async def test_manga_fetch_refuses_hosts_off_the_allow_list(manga_calls, monkeypatch, url):
+    monkeypatch.delenv("MANGA_EXTRA_ALLOWED_HOSTS")
+    with pytest.raises(main.HTTPException) as exc:
+        await main.fetch_manga_from_url(main.MangaFetchRequest(url=url))
+    assert exc.value.status_code == 400
+    assert manga_calls == []
 
 
 @pytest.fixture
