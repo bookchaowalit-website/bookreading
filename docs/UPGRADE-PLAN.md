@@ -60,6 +60,16 @@ Local check commands:
   prompting a billing update (`src/lib/subscriptionStatus.ts`, 8 tests).
 - `.env.example`/compose: `STRIPE_PRICE_*`; example leaves billing disabled.
 
+- ai-service: `/scrape`, `/manga/fetch`, `/chapter` and the Korean scraper
+  pick a parser from the parsed URL host (`site_routing.py`), not substrings
+  of the whole URL (`toonily.com/webtoon/...` went to the Webtoons fetcher;
+  `?ref=piaotia.com` or any "ko" in a path switched scrapers). 22 tests.
+- Frontend: reading streak counts local calendar days (in UTC+7 a read after
+  07:00 was filed under the wrong day, so the streak showed 0; invalid dates
+  threw); chapter/page jump boxes ignore empty/non-numeric input instead of
+  loading page NaN (which fell through to re-scraping). `src/lib/readingStats.ts`,
+  7 tests; vitest pins `TZ=Asia/Bangkok`.
+
 ## Done in pass 3
 - Backend: Stripe webhooks are order-safe. New `users.stripe_event_at`
   (migration 008 + `init.sql`; apply before deploying this backend) stores

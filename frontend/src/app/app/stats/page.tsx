@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useReadingProgress } from '@/hooks/useReadingProgress';
 import { BookOpen, Clock, Trophy, TrendingUp, Award, Calendar, Share2, ExternalLink, Flame, Gem, Star, Crown, Zap } from 'lucide-react';
 import { shareReadingProgress, shareAchievement } from '@/lib/sharing';
+import { readingStreak } from '@/lib/readingStats';
 
 interface ReadingSession {
   novelId: string;
@@ -70,32 +71,7 @@ export default function StatsPage() {
     setSessions(sessionsList);
   }, [progressList]);
 
-  const calculateStreak = (history: any[]) => {
-    if (history.length === 0) return 0;
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    let streak = 0;
-    let checkDate = new Date(today);
-
-    for (let i = 0; i < 365; i++) {
-      const dateStr = checkDate.toISOString().split('T')[0];
-      const hasReading = history.some((h: any) => {
-        const hDate = new Date(h.date || h.timestamp || h.lastReadAt);
-        return hDate.toISOString().split('T')[0] === dateStr && (h.chaptersRead || 1) > 0;
-      });
-
-      if (hasReading) {
-        streak++;
-        checkDate.setDate(checkDate.getDate() - 1);
-      } else {
-        break;
-      }
-    }
-
-    return streak;
-  };
+  const calculateStreak = (history: any[]) => readingStreak(history);
 
   const calculateAvgDaily = (history: any[]) => {
     if (history.length === 0) return 0;

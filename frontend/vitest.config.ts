@@ -2,6 +2,10 @@ import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
+// Date tests assume the product's primary zone (Thailand, UTC+7), where
+// local-vs-UTC day bugs show up; set before test workers start.
+process.env.TZ = 'Asia/Bangkok';
+
 export default defineConfig({
   plugins: [react() as any],
   test: {
