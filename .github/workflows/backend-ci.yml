@@ -25,15 +25,12 @@ jobs:
           cache: true
           cache-dependency-path: backend/go.sum
 
-      - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v4
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          # Pinned: `latest` silently picks up new linters and breaks CI.
+          version: v2.5.0
           working-directory: backend
-
-      - name: Run linter
-        run: golangci-lint run ./...
-        working-directory: backend
 
   test:
     name: Test

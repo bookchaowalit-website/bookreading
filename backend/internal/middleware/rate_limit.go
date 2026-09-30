@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,8 +20,9 @@ type RateLimiter struct {
 
 // Visitor tracks request counts for a single visitor
 type Visitor struct {
-	count    int
-	lastSeen time.Time
+	count       int
+	windowStart time.Time
+	lastSeen    time.Time
 }
 
 // NewRateLimiter creates a new rate limiter
@@ -35,19 +38,25 @@ func NewRateLimiter(rate int, window time.Duration) *RateLimiter {
 	return rl
 }
 
-// Allow checks if a request from this IP should be allowed
+// Allow checks if a request from this IP should be allowed.
+// It uses a fixed window that starts at the visitor's first request, so a
+// steady trickle of requests is never blocked (the window used to slide on
+// every request, which made the counter accumulate forever).
 func (rl *RateLimiter) Allow(ip string) bool {
+	return rl.allowAt(ip, time.Now())
+}
+
+func (rl *RateLimiter) allowAt(ip string, now time.Time) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	now := time.Now()
-
 	visitor, exists := rl.visitors[ip]
-	if !exists || now.Sub(visitor.lastSeen) > rl.window {
+	if !exists || now.Sub(visitor.windowStart) >= rl.window {
 		// New visitor or window expired
 		rl.visitors[ip] = &Visitor{
-			count:    1,
-			lastSeen: now,
+			count:       1,
+			windowStart: now,
+			lastSeen:    now,
 		}
 		return true
 	}
@@ -67,7 +76,7 @@ func (rl *RateLimiter) cleanup() {
 		rl.mu.Lock()
 		now := time.Now()
 		for ip, visitor := range rl.visitors {
-			if now.Sub(visitor.lastSeen) > rl.window {
+			if now.Sub(visitor.windowStart) >= rl.window {
 				delete(rl.visitors, ip)
 			}
 		}
@@ -104,7 +113,7 @@ func RateLimitMiddleware(next http.Handler, limiter *RateLimiter) http.Handler {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Retry-After", "60")
 			w.WriteHeader(http.StatusTooManyRequests)
-			w.Write([]byte(`{"success":false,"error":"Rate limit exceeded","message":"Too many requests. Please try again later."}`))
+			_, _ = w.Write([]byte(`{"success":false,"error":"Rate limit exceeded","message":"Too many requests. Please try again later."}`))
 			return
 		}
 
@@ -112,19 +121,29 @@ func RateLimitMiddleware(next http.Handler, limiter *RateLimiter) http.Handler {
 	})
 }
 
-// getClientIP extracts the client IP from the request
+// getClientIP extracts the client IP from the request.
+// Forwarding headers are trusted as-is (the service is expected to run behind
+// a reverse proxy that sets them); only the first X-Forwarded-For hop is used,
+// and the port is stripped from RemoteAddr so each new TCP connection from
+// the same client shares one bucket.
 func getClientIP(r *http.Request) string {
 	// Check X-Forwarded-For header (for proxied requests)
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return xff
+		first := strings.TrimSpace(strings.Split(xff, ",")[0])
+		if first != "" {
+			return first
+		}
 	}
 
 	// Check X-Real-IP header
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
 		return xri
 	}
 
-	// Fall back to RemoteAddr
+	// Fall back to RemoteAddr without the ephemeral port
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
 	return r.RemoteAddr
 }
 

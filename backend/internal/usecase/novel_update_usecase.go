@@ -75,7 +75,7 @@ func (uc *NovelUpdateUseCase) CheckForUpdates(ctx context.Context, subscription 
 	}
 
 	// Record start
-	uc.histRepo.Create(history)
+	uc.recordHistory(history)
 
 	// Scrape the novel to get latest chapters
 	_, chaptersScraped, err := uc.novelUC.ScrapeNovel(ctx, subscription.SourceURL, "", "", subscription.NovelID)
@@ -85,7 +85,7 @@ func (uc *NovelUpdateUseCase) CheckForUpdates(ctx context.Context, subscription 
 		history.ErrorMessage = &errMsg
 		now := time.Now()
 		history.CompletedAt = &now
-		uc.histRepo.Create(history)
+		uc.recordHistory(history)
 		return err
 	}
 
@@ -93,14 +93,16 @@ func (uc *NovelUpdateUseCase) CheckForUpdates(ctx context.Context, subscription 
 	newChapters := chaptersScraped
 
 	// Update subscription
-	uc.subRepo.UpdateLastChecked(subscription.ID, subscription.LastChapterCount+newChapters)
+	if err := uc.subRepo.UpdateLastChecked(subscription.ID, subscription.LastChapterCount+newChapters); err != nil {
+		log.Printf("[WARN] failed to update last-checked for subscription %s: %v", subscription.ID, err)
+	}
 
 	// Record completion
 	history.ChaptersAdded = newChapters
 	history.Status = "success"
 	now := time.Now()
 	history.CompletedAt = &now
-	uc.histRepo.Create(history)
+	uc.recordHistory(history)
 
 	log.Printf("Updated novel %s: %d new chapters", subscription.NovelID, newChapters)
 	return nil
@@ -136,4 +138,11 @@ func (uc *NovelUpdateUseCase) GetUpdateHistory(ctx context.Context, novelID stri
 		limit = 10
 	}
 	return uc.histRepo.GetByNovelID(novelID, limit)
+}
+
+// recordHistory persists an update-history row; failures are logged, not fatal.
+func (uc *NovelUpdateUseCase) recordHistory(history *domain.NovelUpdateHistory) {
+	if err := uc.histRepo.Create(history); err != nil {
+		log.Printf("[WARN] failed to record update history for novel %s: %v", history.NovelID, err)
+	}
 }

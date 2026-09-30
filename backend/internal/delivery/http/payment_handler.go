@@ -2,6 +2,8 @@ package http
 
 import (
 	"encoding/json"
+	"io"
+	"log"
 	"net/http"
 	"os"
 
@@ -129,7 +131,9 @@ func (h *PaymentHandler) CreateCheckoutSession(w http.ResponseWriter, r *http.Re
 
 		// Update user with Stripe customer ID
 		user.StripeCustomerID = &customerID
-		h.userRepo.Update(r.Context(), user)
+		if err := h.userRepo.Update(r.Context(), user); err != nil {
+			log.Printf("[WARN] failed to persist Stripe customer ID for user %s: %v", userID, err)
+		}
 	}
 
 	// Create checkout session
@@ -174,13 +178,31 @@ func (h *PaymentHandler) CreateCheckoutSession(w http.ResponseWriter, r *http.Re
 	})
 }
 
+// maxWebhookBodyBytes caps Stripe webhook payloads (Stripe events are < 64 KiB).
+const maxWebhookBodyBytes = 65536
+
 func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
-	body := make([]byte, r.ContentLength)
-	r.Body.Read(body)
+	webhookSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
+	if webhookSecret == "" {
+		// Never accept unsigned events when the secret is not configured.
+		respondError(w, http.StatusServiceUnavailable, "Webhook not configured")
+		return
+	}
+
+	// io.ReadAll handles chunked bodies (ContentLength == -1) and short reads;
+	// the previous make([]byte, r.ContentLength) + single Read could panic or
+	// truncate the payload.
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxWebhookBodyBytes+1))
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Failed to read body")
+		return
+	}
+	if len(body) > maxWebhookBodyBytes {
+		respondError(w, http.StatusRequestEntityTooLarge, "Payload too large")
+		return
+	}
 
 	sig := r.Header.Get("Stripe-Signature")
-	webhookSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
-
 	event, err := webhook.ConstructEvent(body, sig, webhookSecret)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "Invalid signature")
@@ -190,35 +212,32 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	switch event.Type {
 	case "checkout.session.completed":
 		var sess stripe.CheckoutSession
-		json.Unmarshal(event.Data.Raw, &sess)
+		if err := json.Unmarshal(event.Data.Raw, &sess); err != nil {
+			respondError(w, http.StatusBadRequest, "Invalid event payload")
+			return
+		}
 
 		userID := sess.Metadata["user_id"]
 		plan := sess.Metadata["plan"]
 
 		user, err := h.userRepo.GetByID(r.Context(), userID)
-		if err == nil {
+		if err == nil && user != nil {
 			user.SubscriptionPlan = plan
 			user.SubscriptionStatus = "active"
-			user.StripeSubscriptionID = &sess.Subscription.ID
-			h.userRepo.Update(r.Context(), user)
+			if sess.Subscription != nil {
+				subID := sess.Subscription.ID
+				user.StripeSubscriptionID = &subID
+			}
+			if err := h.userRepo.Update(r.Context(), user); err != nil {
+				// Non-2xx makes Stripe retry the event later.
+				respondError(w, http.StatusInternalServerError, "Failed to update user")
+				return
+			}
 		}
 
-	case "customer.subscription.deleted":
-		var sub stripe.Subscription
-		json.Unmarshal(event.Data.Raw, &sub)
-
-		// Find user by subscription ID and update status
-		// In production, query by StripeSubscriptionID
-		// For now, mark all users with this sub ID as canceled
-
-	case "customer.subscription.updated":
-		var sub stripe.Subscription
-		json.Unmarshal(event.Data.Raw, &sub)
-
-		// Handle status changes (past_due, canceled, etc.)
-		status := string(sub.Status)
-		// Update user subscription status accordingly
-		_ = status
+	case "customer.subscription.deleted", "customer.subscription.updated":
+		// Not implemented yet: needs a lookup by StripeSubscriptionID.
+		// Acknowledged so Stripe does not retry. See docs/UPGRADE-PLAN.md.
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"status": "received"})
@@ -271,7 +290,9 @@ func (h *PaymentHandler) CancelSubscription(w http.ResponseWriter, r *http.Reque
 	}
 
 	user.SubscriptionStatus = "canceling"
-	h.userRepo.Update(r.Context(), user)
+	if err := h.userRepo.Update(r.Context(), user); err != nil {
+		log.Printf("[WARN] failed to persist canceling status for user %s: %v", userID, err)
+	}
 
 	respondJSON(w, http.StatusOK, map[string]string{
 		"status": "Subscription will be canceled at the end of the billing period",
@@ -319,7 +340,7 @@ func (h *PaymentHandler) CreateBillingPortal(w http.ResponseWriter, r *http.Requ
 func respondJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 func respondError(w http.ResponseWriter, status int, message string) {

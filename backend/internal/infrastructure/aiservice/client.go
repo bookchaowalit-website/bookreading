@@ -109,7 +109,7 @@ func (c *aiServiceClient) ScrapeNovel(ctx context.Context, url, sourceLang strin
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("scrape request failed with status: %d", resp.StatusCode)
@@ -136,7 +136,7 @@ func (c *aiServiceClient) TranslateContent(ctx context.Context, req *TranslateRe
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("translation request failed with status: %d", resp.StatusCode)
@@ -163,7 +163,7 @@ func (c *aiServiceClient) ExtractTerminology(ctx context.Context, req *ExtractTe
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("terminology extraction request failed with status: %d", resp.StatusCode)

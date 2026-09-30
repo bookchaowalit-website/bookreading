@@ -288,7 +288,7 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"healthy","service":"backend","version":"1.0.0"}`))
+		_, _ = w.Write([]byte(`{"status":"healthy","service":"backend","version":"1.0.0"}`))
 	})
 
 	// Ready check (for Kubernetes/Docker) - checks all dependencies
@@ -315,7 +315,7 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 		if dbStatus == "down" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"status":  "not ready",
 				"db":      "down",
 				"service": "backend",
@@ -325,7 +325,7 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	// Detailed health check with all dependencies
@@ -364,7 +364,7 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusPartialContent)
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	// CORS + Rate Limiting middleware
