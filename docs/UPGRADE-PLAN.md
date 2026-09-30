@@ -4,8 +4,8 @@ Living backlog for improvement passes. Keep it short and actionable.
 
 ## Current state
 
-**Score: 7/10** (was 6/10 after pass 1, 5/10 originally). Billing lifecycle
-now round-trips through Stripe webhooks. Three services build and their unit tests
+**Score: 7.5/10** (7 after pass 2, 6 after pass 1, 5 originally). Billing
+lifecycle round-trips through Stripe webhooks and is now order-safe. Three services build and their unit tests
 pass locally; backend is golangci-lint clean; CI now runs the real checks.
 Large untested surface remains (ai-service `main.py` is ~3k lines, Go
 repositories/handlers have no DB-backed tests).
@@ -21,11 +21,6 @@ Local check commands:
 ## Backlog
 
 ### P0
-- Webhook ordering: `customer.subscription.updated` can arrive before
-  `checkout.session.completed`; it is acknowledged (user not yet linked) and
-  the later checkout event sets `active`. If Stripe ever sends a stale
-  checkout event after a cancel, the user is re-activated. Record
-  `event.Created` per user (or re-fetch the subscription) to order events.
 - Plans use `price_data` with fake price IDs (`price_pro_monthly`); move to
   real Stripe Price IDs from env so the billing portal can switch plans.
 
@@ -43,7 +38,18 @@ Local check commands:
   warnings reported by `npm run lint`.
 - Consolidate the overlapping `ci.yml` and per-service workflows.
 
-## Done in this pass (pass 2)
+## Done in this pass (pass 3)
+- Backend: Stripe webhooks are order-safe. New `users.stripe_event_at`
+  (migration 008 + `init.sql`; apply before deploying this backend) stores
+  the `created` time of the newest applied event; strictly older events are
+  ignored. A `checkout.session.completed` for the subscription the user
+  already holds as `canceled` is ignored even within the same second, so a
+  late/retried checkout can no longer re-activate a canceled user.
+  Resubscribing (new subscription ID, newer event) still activates.
+  5 new tests with locally signed fixtures (stale checkout after cancel,
+  same-second checkout, out-of-order `updated`, resubscribe, unknown user).
+
+## Done in pass 2
 - Backend: `customer.subscription.updated/deleted` now update the owning
   user (lookup via new `UserRepository.GetByStripeSubscriptionID`): deleted or
   canceled -> plan `free`/status `canceled`; cancel-at-period-end ->

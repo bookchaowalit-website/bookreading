@@ -71,7 +71,7 @@ func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
 	query := `
 		UPDATE users 
 		SET name = $2, avatar_url = $3, subscription_plan = $4, subscription_status = $5,
-		    stripe_customer_id = $6, stripe_subscription_id = $7
+		    stripe_customer_id = $6, stripe_subscription_id = $7, stripe_event_at = $8
 		WHERE id = $1
 		RETURNING updated_at
 	`
@@ -83,6 +83,7 @@ func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
 		user.SubscriptionStatus,
 		user.StripeCustomerID,
 		user.StripeSubscriptionID,
+		user.StripeEventAt,
 	).Scan(&user.UpdatedAt)
 }
 

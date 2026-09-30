@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/bookreading/backend/internal/domain"
 	"github.com/stripe/stripe-go/v74"
@@ -218,22 +219,11 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		userID := sess.Metadata["user_id"]
-		plan := sess.Metadata["plan"]
-
-		user, err := h.userRepo.GetByID(r.Context(), userID)
-		if err == nil && user != nil {
-			user.SubscriptionPlan = plan
-			user.SubscriptionStatus = "active"
-			if sess.Subscription != nil {
-				subID := sess.Subscription.ID
-				user.StripeSubscriptionID = &subID
-			}
-			if err := h.userRepo.Update(r.Context(), user); err != nil {
-				// Non-2xx makes Stripe retry the event later.
-				respondError(w, http.StatusInternalServerError, "Failed to update user")
-				return
-			}
+		if err := h.applyCheckoutCompleted(r, eventTime(&event), &sess); err != nil {
+			log.Printf("[ERROR] stripe checkout.session.completed %s: %v", sess.ID, err)
+			// Non-2xx makes Stripe retry the event later.
+			respondError(w, http.StatusInternalServerError, "Failed to update user")
+			return
 		}
 
 	case "customer.subscription.deleted", "customer.subscription.updated":
@@ -242,7 +232,7 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusBadRequest, "Invalid event payload")
 			return
 		}
-		if err := h.syncSubscription(r, string(event.Type), &sub); err != nil {
+		if err := h.syncSubscription(r, string(event.Type), eventTime(&event), &sub); err != nil {
 			log.Printf("[ERROR] stripe %s for subscription %s: %v", event.Type, sub.ID, err)
 			respondError(w, http.StatusInternalServerError, "Failed to update subscription")
 			return
@@ -257,12 +247,12 @@ func (h *PaymentHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 // idempotent: replays and retries converge on the same user row, and a no-op
 // write is skipped. Unknown subscriptions (for example an older subscription
 // already replaced by a new checkout) are acknowledged without changes.
-func (h *PaymentHandler) syncSubscription(r *http.Request, eventType string, sub *stripe.Subscription) error {
+func (h *PaymentHandler) syncSubscription(r *http.Request, eventType string, at time.Time, sub *stripe.Subscription) error {
 	user, err := h.userRepo.GetByStripeSubscriptionID(r.Context(), sub.ID)
 	if err != nil {
 		return err
 	}
-	if user == nil {
+	if user == nil || isStaleEvent(user, at) {
 		return nil
 	}
 
@@ -273,12 +263,80 @@ func (h *PaymentHandler) syncSubscription(r *http.Request, eventType string, sub
 	if status == "canceled" {
 		plan = "free"
 	}
-	if plan == user.SubscriptionPlan && status == user.SubscriptionStatus {
+	if plan == user.SubscriptionPlan && status == user.SubscriptionStatus && !advancesEventTime(user, at) {
 		return nil
 	}
 	user.SubscriptionPlan = plan
 	user.SubscriptionStatus = status
+	markEventApplied(user, at)
 	return h.userRepo.Update(r.Context(), user)
+}
+
+// applyCheckoutCompleted activates the plan bought in a checkout session.
+//
+// Stripe does not guarantee delivery order and retries failed deliveries for
+// days, so a checkout.session.completed can arrive after the subscription it
+// created was canceled. Two guards keep such a stale event from re-activating
+// the user:
+//   - events older than the newest event already applied are ignored, and
+//   - a checkout for the subscription the user already holds as canceled is
+//     ignored regardless of timestamps (a canceled subscription is terminal
+//     in Stripe; resubscribing always creates a new subscription ID).
+func (h *PaymentHandler) applyCheckoutCompleted(r *http.Request, at time.Time, sess *stripe.CheckoutSession) error {
+	userID := sess.Metadata["user_id"]
+	if userID == "" {
+		return nil
+	}
+	user, err := h.userRepo.GetByID(r.Context(), userID)
+	if err != nil || user == nil {
+		// Unknown user (for example deleted since checkout): acknowledge.
+		return nil
+	}
+	if isStaleEvent(user, at) {
+		log.Printf("[INFO] ignoring stale checkout.session.completed %s for user %s", sess.ID, userID)
+		return nil
+	}
+	var subID string
+	if sess.Subscription != nil {
+		subID = sess.Subscription.ID
+	}
+	if subID != "" && user.StripeSubscriptionID != nil && *user.StripeSubscriptionID == subID &&
+		user.SubscriptionStatus == "canceled" {
+		log.Printf("[INFO] ignoring checkout.session.completed %s for already canceled subscription %s", sess.ID, subID)
+		return nil
+	}
+
+	user.SubscriptionPlan = sess.Metadata["plan"]
+	user.SubscriptionStatus = "active"
+	if subID != "" {
+		user.StripeSubscriptionID = &subID
+	}
+	markEventApplied(user, at)
+	return h.userRepo.Update(r.Context(), user)
+}
+
+// eventTime returns the event's creation time (Stripe `created`, seconds).
+func eventTime(event *stripe.Event) time.Time {
+	return time.Unix(event.Created, 0).UTC()
+}
+
+// isStaleEvent reports whether an event is strictly older than the newest one
+// already applied to the user. `created` has one-second resolution, so events
+// from the same second are still applied (the per-type guards and the
+// idempotent state mapping handle those).
+func isStaleEvent(user *domain.User, at time.Time) bool {
+	return user.StripeEventAt != nil && at.Before(*user.StripeEventAt)
+}
+
+func advancesEventTime(user *domain.User, at time.Time) bool {
+	return user.StripeEventAt == nil || at.After(*user.StripeEventAt)
+}
+
+func markEventApplied(user *domain.User, at time.Time) {
+	if advancesEventTime(user, at) {
+		t := at
+		user.StripeEventAt = &t
+	}
 }
 
 // subscriptionStatusFor maps Stripe's subscription status onto the values the

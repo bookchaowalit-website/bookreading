@@ -78,12 +78,18 @@ func subscribedUser(plan, status, subID string) *domain.User {
 // signedEvent builds a Stripe test fixture event signed with the test secret.
 func signedEvent(t *testing.T, eventType string, object map[string]any) (string, string) {
 	t.Helper()
+	return signedEventAt(t, eventType, 0, object)
+}
+
+// signedEventAt is signedEvent with an explicit event `created` timestamp.
+func signedEventAt(t *testing.T, eventType string, created int64, object map[string]any) (string, string) {
+	t.Helper()
 	raw, err := json.Marshal(object)
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload := fmt.Sprintf(`{"id":"evt_test","object":"event","api_version":%q,"type":%q,"data":{"object":%s}}`,
-		stripe.APIVersion, eventType, raw)
+	payload := fmt.Sprintf(`{"id":"evt_test","object":"event","api_version":%q,"type":%q,"created":%d,"data":{"object":%s}}`,
+		stripe.APIVersion, eventType, created, raw)
 	signed := webhook.GenerateTestSignedPayload(&webhook.UnsignedPayload{Payload: []byte(payload), Secret: testWebhookSecret})
 	return payload, signed.Header
 }

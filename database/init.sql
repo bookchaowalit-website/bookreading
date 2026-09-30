@@ -14,6 +14,7 @@ CREATE TABLE users (
     subscription_status VARCHAR(50) DEFAULT 'active',
     stripe_customer_id VARCHAR(255),
     stripe_subscription_id VARCHAR(255),
+    stripe_event_at TIMESTAMPTZ,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
