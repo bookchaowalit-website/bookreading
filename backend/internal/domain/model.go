@@ -11,7 +11,7 @@ type User struct {
 	SubscriptionPlan   string `json:"subscription_plan" db:"subscription_plan"`
 	SubscriptionStatus string `json:"subscription_status" db:"subscription_status"`
 	// Role is RoleUser or RoleAdmin (migration 009, default RoleUser). It is
-	// never written by the profile/billing Update path; ADMIN_EMAILS (startup)
+	// never written by the profile/billing Update path; ADMIN_USER_IDS (startup)
 	// or SQL grants admin.
 	Role                 string  `json:"role" db:"role"`
 	StripeCustomerID     *string `json:"-" db:"stripe_customer_id"`

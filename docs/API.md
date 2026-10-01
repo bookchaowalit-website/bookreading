@@ -265,8 +265,11 @@ resp, err := client.ListNovels(context.Background(), &pb.ListNovelsRequest{
   Request bodies are capped at 2 MiB (32 MiB for manga image routes). The
   manga health/supported-* metadata routes are public.
   `POST /api/ai/review/approve|edit|reject` additionally require the admin
-  role (403 otherwise, checked against the current user record); see
-  `ADMIN_EMAILS` in `.env.example`.
+  role (403 otherwise, checked against the current user record).
+  Admins are bootstrapped with `ADMIN_USER_IDS` (account UUIDs from
+  `GET /api/users/me`), see `.env.example`. Email addresses are not used
+  because registration does not verify email ownership: anyone could
+  register a listed address first. `ADMIN_EMAILS` is ignored.
 - Service-to-service only: `http://ai-service:8000` (development:
   `http://localhost:8000`, loopback-bound). Not for browsers.
 

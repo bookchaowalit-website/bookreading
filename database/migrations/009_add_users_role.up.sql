@@ -1,6 +1,6 @@
 -- User role for admin-only actions (translation review moderation).
 -- Every existing and new account is a regular user; grant admin with the
--- backend's ADMIN_EMAILS bootstrap or an explicit UPDATE.
+-- backend's ADMIN_USER_IDS bootstrap or an explicit UPDATE.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'user';
 
 DO $$

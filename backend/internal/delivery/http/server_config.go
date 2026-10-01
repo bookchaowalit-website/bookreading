@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strconv"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bookreading/backend/internal/infrastructure/aiservice"
+	"github.com/google/uuid"
 )
 
 // ServerConfig holds the http.Server limits. Every field has a safe default
@@ -86,21 +88,58 @@ func LoadServerConfig(getenv func(string) string) (ServerConfig, error) {
 	return cfg, nil
 }
 
-// ParseAdminEmails splits ADMIN_EMAILS (comma or whitespace separated) into
-// trimmed, lower-cased, de-duplicated addresses. Entries without "@" are
-// ignored.
-func ParseAdminEmails(raw string) []string {
+// ParseAdminUserIDs splits ADMIN_USER_IDS (comma or whitespace separated)
+// into canonical, de-duplicated user UUIDs. Entries that are not UUIDs are
+// returned separately so startup can report them.
+func ParseAdminUserIDs(raw string) (ids []string, invalid []string) {
 	seen := map[string]bool{}
-	var out []string
 	for _, f := range strings.FieldsFunc(raw, func(r rune) bool {
 		return r == ',' || r == ';' || r == ' ' || r == '\t' || r == '\n'
 	}) {
-		e := strings.ToLower(strings.TrimSpace(f))
-		if !strings.Contains(e, "@") || seen[e] {
+		u, err := uuid.Parse(strings.TrimSpace(f))
+		if err != nil {
+			invalid = append(invalid, f)
 			continue
 		}
-		seen[e] = true
-		out = append(out, e)
+		id := u.String()
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
 	}
-	return out
+	return ids, invalid
+}
+
+// AdminPromoter grants the admin role to existing users by ID.
+type AdminPromoter interface {
+	PromoteAdminsByID(ctx context.Context, ids []string) (int64, error)
+}
+
+// BootstrapAdmins applies ADMIN_USER_IDS at startup.
+//
+// Registration is open and does not verify email ownership, so an email
+// allow-list could be claimed by whoever registers that address first.
+// Admins are therefore bound to account IDs: the operator registers, reads
+// their own ID from GET /api/users/me, and lists it. The legacy ADMIN_EMAILS
+// variable is ignored (with a warning). Nobody is ever demoted or created.
+// It returns the number of accounts changed.
+func BootstrapAdmins(ctx context.Context, p AdminPromoter, getenv func(string) string) int64 {
+	if strings.TrimSpace(getenv("ADMIN_EMAILS")) != "" {
+		log.Printf("[WARN] ADMIN_EMAILS is ignored: email ownership is not verified at registration; list account IDs in ADMIN_USER_IDS instead")
+	}
+	ids, invalid := ParseAdminUserIDs(getenv("ADMIN_USER_IDS"))
+	if len(invalid) > 0 {
+		log.Printf("[WARN] ADMIN_USER_IDS: ignoring %d entries that are not UUIDs", len(invalid))
+	}
+	if len(ids) == 0 || p == nil {
+		return 0
+	}
+	n, err := p.PromoteAdminsByID(ctx, ids)
+	if err != nil {
+		log.Printf("[WARN] ADMIN_USER_IDS bootstrap failed (is migration 009 applied?): %v", err)
+		return 0
+	}
+	log.Printf("[INFO] ADMIN_USER_IDS bootstrap: %d of %d listed accounts promoted", n, len(ids))
+	return n
 }

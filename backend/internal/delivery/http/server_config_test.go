@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -75,14 +76,42 @@ func TestNewHTTPServerAppliesConfig(t *testing.T) {
 	}
 }
 
-func TestParseAdminEmails(t *testing.T) {
-	got := ParseAdminEmails(" Admin@Example.test, ops@example.test;admin@example.test\tnot-an-email ,, ")
-	want := []string{"admin@example.test", "ops@example.test"}
+func TestParseAdminUserIDs(t *testing.T) {
+	got, invalid := ParseAdminUserIDs(" 3F2504E0-4F89-11D3-9A0C-0305E82C3301, admin@example.test;3f2504e0-4f89-11d3-9a0c-0305e82c3301\t6ba7b810-9dad-11d1-80b4-00c04fd430c8 ,, ")
+	want := []string{"3f2504e0-4f89-11d3-9a0c-0305e82c3301", "6ba7b810-9dad-11d1-80b4-00c04fd430c8"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
-	if ParseAdminEmails("") != nil {
+	if !reflect.DeepEqual(invalid, []string{"admin@example.test"}) {
+		t.Fatalf("invalid = %v", invalid)
+	}
+	if ids, _ := ParseAdminUserIDs(""); ids != nil {
 		t.Fatal("empty input must yield no admins")
+	}
+}
+
+type recordingPromoter struct{ calls [][]string }
+
+func (p *recordingPromoter) PromoteAdminsByID(_ context.Context, ids []string) (int64, error) {
+	p.calls = append(p.calls, ids)
+	return int64(len(ids)), nil
+}
+
+func TestBootstrapAdminsNeverPromotesByEmail(t *testing.T) {
+	// Registration does not verify email ownership, so whoever registers a
+	// listed address first must not become admin.
+	env := map[string]string{"ADMIN_EMAILS": "owner@example.test"}
+	p := &recordingPromoter{}
+	if n := BootstrapAdmins(context.Background(), p, func(k string) string { return env[k] }); n != 0 || len(p.calls) != 0 {
+		t.Fatalf("ADMIN_EMAILS alone promoted accounts: n=%d calls=%v", n, p.calls)
+	}
+
+	env["ADMIN_USER_IDS"] = "6ba7b810-9dad-11d1-80b4-00c04fd430c8, owner@example.test"
+	if n := BootstrapAdmins(context.Background(), p, func(k string) string { return env[k] }); n != 1 {
+		t.Fatalf("promoted %d, want 1", n)
+	}
+	if want := [][]string{{"6ba7b810-9dad-11d1-80b4-00c04fd430c8"}}; !reflect.DeepEqual(p.calls, want) {
+		t.Fatalf("calls = %v, want %v", p.calls, want)
 	}
 }
 

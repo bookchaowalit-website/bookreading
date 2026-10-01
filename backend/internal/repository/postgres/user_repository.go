@@ -88,16 +88,16 @@ func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
 	).Scan(&user.UpdatedAt)
 }
 
-// PromoteAdmins grants the admin role to existing users whose email matches
-// one of emails (case-insensitive). It never demotes anyone and never
-// creates accounts. It returns the number of users changed.
-func (r *UserRepository) PromoteAdmins(ctx context.Context, emails []string) (int64, error) {
-	if len(emails) == 0 {
+// PromoteAdminsByID grants the admin role to existing users whose ID is in
+// ids (canonical UUID strings). It never demotes anyone and never creates
+// accounts. It returns the number of users changed.
+func (r *UserRepository) PromoteAdminsByID(ctx context.Context, ids []string) (int64, error) {
+	if len(ids) == 0 {
 		return 0, nil
 	}
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE users SET role = $1 WHERE lower(email) = ANY($2) AND role <> $1`,
-		domain.RoleAdmin, pq.Array(emails))
+		`UPDATE users SET role = $1 WHERE id = ANY($2::uuid[]) AND role <> $1`,
+		domain.RoleAdmin, pq.Array(ids))
 	if err != nil {
 		return 0, err
 	}
@@ -202,7 +202,12 @@ func (r *UserTerminologyRepository) Create(ctx context.Context, term *domain.Use
 
 func (r *UserTerminologyRepository) GetByUserID(ctx context.Context, userID string) ([]domain.UserTerminology, error) {
 	var terms []domain.UserTerminology
-	query := `SELECT * FROM user_terminology WHERE user_id = $1 ORDER BY created_at DESC`
+	// Explicit columns: the migration-built table also has novel_id, which
+	// domain.UserTerminology does not map (SELECT * made sqlx fail).
+	query := `SELECT id, user_id, original_term, translation,
+	                 COALESCE(term_type, '') AS term_type, COALESCE(description, '') AS description,
+	                 created_at, updated_at
+	          FROM user_terminology WHERE user_id = $1 ORDER BY created_at DESC`
 	err := r.db.SelectContext(ctx, &terms, query, userID)
 	if err != nil {
 		return nil, err
