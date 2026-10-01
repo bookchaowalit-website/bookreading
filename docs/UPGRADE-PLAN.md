@@ -4,7 +4,7 @@ Living backlog for improvement passes. Keep it short and actionable.
 
 ## Current state
 
-**Score: 8.6/10** (8.3 after pass 7, 8 after pass 6, 7.5 after pass 3, 7 after pass 2, 6 after pass 1, 5
+**Score: 8.8/10** (8.6 after pass 8, 8.3 after pass 7, 8 after pass 6, 7.5 after pass 3, 7 after pass 2, 6 after pass 1, 5
 originally). Billing uses configured Stripe Prices (validated at startup),
 round-trips through webhooks order-safely and follows portal plan switches. Three services build and their unit tests
 pass locally; backend is golangci-lint clean; CI now runs the real checks.
@@ -22,27 +22,35 @@ Local check commands:
 ## Backlog
 
 ### P0
-- Subscription routes (`/api/subscriptions*`, `subscription_handler.go`)
-  take `user_id` from the query string instead of the session, so any
-  signed-in user can list/modify another user's subscriptions. Use
-  `GetUserIDFromContext` and ignore the query parameter; add tests.
-- (none open) Operator task before enabling billing: create recurring Prices
+- Chapter writes are unauthenticated: `POST /api/chapters/update` and
+  `POST /api/chapters/translate` with `translated_text` overwrite any
+  chapter, and `POST /api/novels` (scrape) is open. The reader page uses
+  them, so require a session first (cookie is same-origin), then decide
+  who may overwrite shared chapter text (admin or a per-user copy).
+- Operator, before deploying pass 9: replace `ADMIN_EMAILS` with
+  `ADMIN_USER_IDS` (UUID from `GET /api/users/me`) or no admin is promoted.
+- Operator task before enabling billing: create recurring Prices
   in Stripe, set `STRIPE_PRICE_PRO`/`STRIPE_PRICE_TEAM`, and enable plan
   switching between them in the Stripe billing-portal configuration.
 
 ### P1
-- The migration chain alone does not build a working schema: 001 creates
-  `users` without `avatar_url`/`subscription_*`/`stripe_*` (only `init.sql`
-  has them), so `007_index_users_stripe_subscription` fails on a fresh DB.
-  Add a migration that adds the missing columns before 007's index.
+- Schema drift beyond `users`: migrations and `init.sql` still disagree on
+  most other tables (`chapters`, `novels`, `terminology`, `novel_*`,
+  timestamptz vs timestamp; init.sql-only `review_queue`,
+  `character_profiles`, `translation_*`; migration-only `bookmarks`,
+  `reading_progress`, `user_api_keys`, `translation_cache`). Pick the
+  migrations as the source of truth, add aligning migrations table by table
+  (repository SELECT lists must match), and make `init.sql` a dump of the
+  migrated schema. `scripts/check-migrations.sh` + the DB tests catch
+  regressions.
+- gRPC server (`delivery/grpc`, published on host port 9091) has no auth;
+  bind it to loopback/internal network or add a token interceptor.
 - Operator: set `AI_SERVICE_TOKEN` in the production `.env` now that the
   browser goes through `/api/ai` (backend and ai-service share it via
   `env_file`), then confirm `/api/ai/translate` works and a direct call to
   ai-service without the token gets 401.
 - `/api/ai/review/pending` and `/stats` are still readable by any
   signed-in user; decide whether the queue is admin-only too.
-- Frontend: hide review approve/edit/reject for non-admins (`role` is now in
-  `GET /api/users/me`).
 - Expensive `/api/ai` POSTs (translate, manga) only get the global rate
   limit; consider a per-user quota tied to the subscription plan.
 - ai-service: Webtoons Playwright path resolves DNS inside Chromium; only
@@ -63,7 +71,36 @@ Local check commands:
   warnings reported by `npm run lint`.
 - Consolidate the overlapping `ci.yml` and per-service workflows.
 
-## Done in this pass (pass 8: admin role, server timeouts, auth context fix)
+## Done in this pass (pass 9: IDOR, admin bootstrap, migrations, admin UI)
+- P0 IDOR closed: `/api/subscriptions*`, `/api/reading-progress*`,
+  `/api/bookmarks*` and `/api/feedback` took `user_id` from the query
+  string. `sessionUserID` (handler.go) now decides; a mismatching `user_id`
+  returns 403. Subscribe stores the session owner (it used to return any
+  user's row for the novel); unsubscribe, bookmark and terminology deletes
+  are owner-checked (404 for foreign ids); the unscoped `DeleteProgress`
+  usecase is gone. `trigger-update` (all users' subscriptions) is
+  admin-only and no longer runs on the cancelled request context. Audited
+  library, api-keys and payments: already session-scoped. Route-level tests
+  (`ownership_test.go`) over `NewServerWithDeps` with in-memory repos.
+- Admin bootstrap: registration does not verify email, so `ADMIN_EMAILS`
+  could promote whoever registered a listed address first. Replaced by
+  `ADMIN_USER_IDS` (account UUIDs); `ADMIN_EMAILS` is ignored with a
+  warning (`BootstrapAdmins`, tested).
+- Migrations: 007 adds the `stripe_*` columns before its index (fresh
+  `migrate up` failed there); new 010 adds `avatar_url`,
+  `subscription_plan/status`, nullable `name`, timestamptz, so the `users`
+  table matches `init.sql` (verified column/index diff on Postgres 16).
+  `scripts/check-migrations.sh` runs up/down/up; backend CI runs it and
+  DB-backed repository tests (`BOOKREADING_TEST_DATABASE_URL`), which also
+  caught `user_terminology` `SELECT *` failing on the migrated table.
+- Frontend: `useIsAdmin` (role from `/api/users/me`) hides review
+  approve/edit/reject and the subscriptions "check now" from non-admins;
+  vitest for user / failed lookup / admin.
+- Verified: gofmt, go vet, `go test -race ./...` (+ DB tests on migrated and
+  init.sql databases), golangci-lint 0 issues; frontend tsc, vitest 67/67,
+  lint, `next build`.
+
+## Done in pass 8: admin role, server timeouts, auth context fix
 - Fixed a P0 found while adding roles: `AuthMiddleware` stored the user ID
   under a typed context key while handlers read the plain string `"userID"`
   (and `GetUserIDFromContext` a third key), so every protected handler
