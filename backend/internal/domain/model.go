@@ -3,13 +3,17 @@ package domain
 import "time"
 
 type User struct {
-	ID                   string  `json:"id" db:"id"`
-	Email                string  `json:"email" db:"email"`
-	PasswordHash         string  `json:"-" db:"password_hash"`
-	Name                 string  `json:"name" db:"name"`
-	AvatarURL            string  `json:"avatar_url" db:"avatar_url"`
-	SubscriptionPlan     string  `json:"subscription_plan" db:"subscription_plan"`
-	SubscriptionStatus   string  `json:"subscription_status" db:"subscription_status"`
+	ID                 string `json:"id" db:"id"`
+	Email              string `json:"email" db:"email"`
+	PasswordHash       string `json:"-" db:"password_hash"`
+	Name               string `json:"name" db:"name"`
+	AvatarURL          string `json:"avatar_url" db:"avatar_url"`
+	SubscriptionPlan   string `json:"subscription_plan" db:"subscription_plan"`
+	SubscriptionStatus string `json:"subscription_status" db:"subscription_status"`
+	// Role is RoleUser or RoleAdmin (migration 009, default RoleUser). It is
+	// never written by the profile/billing Update path; ADMIN_EMAILS (startup)
+	// or SQL grants admin.
+	Role                 string  `json:"role" db:"role"`
 	StripeCustomerID     *string `json:"-" db:"stripe_customer_id"`
 	StripeSubscriptionID *string `json:"-" db:"stripe_subscription_id"`
 	// StripeEventAt is the `created` time of the newest Stripe webhook event
@@ -18,6 +22,15 @@ type User struct {
 	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at" db:"updated_at"`
 }
+
+// User roles. Admins may moderate the translation review queue.
+const (
+	RoleUser  = "user"
+	RoleAdmin = "admin"
+)
+
+// IsAdmin reports whether the user has the admin role.
+func (u *User) IsAdmin() bool { return u != nil && u.Role == RoleAdmin }
 
 type UserLibrary struct {
 	ID              string    `json:"id" db:"id"`

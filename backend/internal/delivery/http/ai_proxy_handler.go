@@ -33,6 +33,7 @@ type aiRoute struct {
 	method  string
 	maxBody int64
 	public  bool // read-only metadata ai-service also serves without a token
+	admin   bool // moderation actions: admin role required
 }
 
 // aiProxyRoutes is the exact allow-list of ai-service paths the frontend uses.
@@ -55,9 +56,9 @@ var aiProxyRoutes = map[string]aiRoute{
 	"/manga/health":              {method: http.MethodGet, public: true},
 	"/review/pending":            {method: http.MethodGet},
 	"/review/stats":              {method: http.MethodGet},
-	"/review/approve":            {method: http.MethodPost, maxBody: aiProxyDefaultMaxBody},
-	"/review/edit":               {method: http.MethodPost, maxBody: aiProxyDefaultMaxBody},
-	"/review/reject":             {method: http.MethodPost, maxBody: aiProxyDefaultMaxBody},
+	"/review/approve":            {method: http.MethodPost, maxBody: aiProxyDefaultMaxBody, admin: true},
+	"/review/edit":               {method: http.MethodPost, maxBody: aiProxyDefaultMaxBody, admin: true},
+	"/review/reject":             {method: http.MethodPost, maxBody: aiProxyDefaultMaxBody, admin: true},
 }
 
 // /terminology/{novel_id}: one plain identifier segment.
@@ -65,14 +66,17 @@ var aiTerminologyByNovel = regexp.MustCompile(`^/terminology/[A-Za-z0-9_-]{1,128
 
 // AIProxyHandler serves AIProxyPrefix + an allow-listed ai-service path.
 type AIProxyHandler struct {
-	ai   AIForwarder
-	auth func(http.HandlerFunc) http.HandlerFunc
+	ai    AIForwarder
+	auth  func(http.HandlerFunc) http.HandlerFunc
+	admin func(http.HandlerFunc) http.HandlerFunc
 }
 
 // NewAIProxyHandler wires the proxy; auth is the backend's user-session
-// middleware (Handler.AuthMiddleware).
-func NewAIProxyHandler(ai AIForwarder, auth func(http.HandlerFunc) http.HandlerFunc) *AIProxyHandler {
-	return &AIProxyHandler{ai: ai, auth: auth}
+// middleware (Handler.AuthMiddleware) and admin the admin-role middleware
+// (Handler.AdminMiddleware) guarding review approve/edit/reject. A nil admin
+// middleware denies those routes.
+func NewAIProxyHandler(ai AIForwarder, auth, admin func(http.HandlerFunc) http.HandlerFunc) *AIProxyHandler {
+	return &AIProxyHandler{ai: ai, auth: auth, admin: admin}
 }
 
 func aiProxyRouteFor(escapedPath string) (string, aiRoute, int) {
@@ -110,11 +114,18 @@ func (p *AIProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	forward := func(w http.ResponseWriter, r *http.Request) { p.forward(w, r, upstream, route) }
-	if route.public {
+	switch {
+	case route.public:
 		forward(w, r)
-		return
+	case route.admin:
+		if p.admin == nil {
+			writeAIProxyError(w, http.StatusForbidden, "Admin role required")
+			return
+		}
+		p.admin(forward)(w, r)
+	default:
+		p.auth(forward)(w, r)
 	}
-	p.auth(forward)(w, r)
 }
 
 func (p *AIProxyHandler) forward(w http.ResponseWriter, r *http.Request, upstream string, route aiRoute) {

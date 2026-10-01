@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -34,6 +35,14 @@ func (u *aiUpstream) snapshot() []aiUpstreamCall {
 
 func newAIProxyFixture(t *testing.T) (*AIProxyHandler, *aiUpstream, string) {
 	t.Helper()
+	p, up, token, _, _ := newAIProxyRoleFixture(t)
+	return p, up, token
+}
+
+// newAIProxyRoleFixture returns tokens for a regular user and an admin, plus
+// the user repository so tests can change roles or simulate outages.
+func newAIProxyRoleFixture(t *testing.T) (*AIProxyHandler, *aiUpstream, string, string, *fakeUserRepo) {
+	t.Helper()
 	up := &aiUpstream{status: http.StatusOK}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
@@ -51,14 +60,21 @@ func newAIProxyFixture(t *testing.T) (*AIProxyHandler, *aiUpstream, string) {
 	}))
 	t.Cleanup(srv.Close)
 
-	users := usecase.NewUserUsecase(nil, nil, nil, "fixture-jwt-secret")
-	token, err := users.GenerateToken(&domain.User{ID: "user-1", Email: "reader@example.test"})
+	reader := &domain.User{ID: "user-1", Email: "reader@example.test", Role: domain.RoleUser}
+	admin := &domain.User{ID: "admin-1", Email: "admin@example.test", Role: domain.RoleAdmin}
+	repo := newFakeUserRepo(reader, admin)
+	users := usecase.NewUserUsecase(repo, nil, nil, "fixture-jwt-secret")
+	token, err := users.GenerateToken(reader)
+	if err != nil {
+		t.Fatalf("GenerateToken: %v", err)
+	}
+	adminToken, err := users.GenerateToken(admin)
 	if err != nil {
 		t.Fatalf("GenerateToken: %v", err)
 	}
 	h := &Handler{userUsecase: users}
 	client := aiservice.NewAIServiceClient(srv.URL, aiProxyServiceToken)
-	return NewAIProxyHandler(client, h.AuthMiddleware), up, token
+	return NewAIProxyHandler(client, h.AuthMiddleware, h.AdminMiddleware), up, token, adminToken, repo
 }
 
 func serveAI(p *AIProxyHandler, method, target, body string, mutate func(*http.Request)) *httptest.ResponseRecorder {
@@ -229,7 +245,7 @@ func TestAIProxyUpstreamUnavailable(t *testing.T) {
 	users := usecase.NewUserUsecase(nil, nil, nil, "fixture-jwt-secret")
 	token, _ := users.GenerateToken(&domain.User{ID: "user-1"})
 	h := &Handler{userUsecase: users}
-	p := NewAIProxyHandler(aiservice.NewAIServiceClient("http://127.0.0.1:1", aiProxyServiceToken), h.AuthMiddleware)
+	p := NewAIProxyHandler(aiservice.NewAIServiceClient("http://127.0.0.1:1", aiProxyServiceToken), h.AuthMiddleware, h.AdminMiddleware)
 	w := serveAI(p, http.MethodPost, "/api/ai/translate", `{}`, func(r *http.Request) {
 		r.Header.Set("Authorization", "Bearer "+token)
 	})
@@ -238,5 +254,63 @@ func TestAIProxyUpstreamUnavailable(t *testing.T) {
 	}
 	if strings.Contains(w.Body.String(), "127.0.0.1") {
 		t.Fatal("upstream address leaked in error body")
+	}
+}
+
+func TestAIProxyReviewModerationRequiresAdmin(t *testing.T) {
+	p, up, userToken, adminToken, repo := newAIProxyRoleFixture(t)
+	bearer := func(tok string) func(*http.Request) {
+		return func(r *http.Request) { r.Header.Set("Authorization", "Bearer "+tok) }
+	}
+	moderation := []string{"/api/ai/review/approve", "/api/ai/review/edit", "/api/ai/review/reject"}
+
+	for _, target := range moderation {
+		if w := serveAI(p, http.MethodPost, target, `{"id":"r1"}`, bearer(userToken)); w.Code != http.StatusForbidden {
+			t.Fatalf("user %s: status %d, want 403", target, w.Code)
+		}
+	}
+	if calls := up.snapshot(); len(calls) != 0 {
+		t.Fatalf("upstream called for forbidden moderation: %+v", calls)
+	}
+
+	// Reading the queue stays open to signed-in users.
+	if w := serveAI(p, http.MethodGet, "/api/ai/review/pending", "", bearer(userToken)); w.Code != http.StatusOK {
+		t.Fatalf("user review/pending: status %d", w.Code)
+	}
+
+	for _, target := range moderation {
+		if w := serveAI(p, http.MethodPost, target, `{"id":"r1"}`, bearer(adminToken)); w.Code != http.StatusOK {
+			t.Fatalf("admin %s: status %d, want 200", target, w.Code)
+		}
+	}
+	if n := len(up.snapshot()); n != 1+len(moderation) {
+		t.Fatalf("upstream calls = %d, want %d", n, 1+len(moderation))
+	}
+
+	// The role is read from the user record, not the token: a demotion
+	// applies to an already-issued admin token.
+	repo.users["admin-1"].Role = domain.RoleUser
+	if w := serveAI(p, http.MethodPost, "/api/ai/review/approve", `{}`, bearer(adminToken)); w.Code != http.StatusForbidden {
+		t.Fatalf("demoted admin: status %d, want 403", w.Code)
+	}
+
+	// A user lookup failure is not reported as a permission decision.
+	repo.getErr = errors.New("db down")
+	if w := serveAI(p, http.MethodPost, "/api/ai/review/approve", `{}`, bearer(adminToken)); w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("lookup failure: status %d, want 503", w.Code)
+	}
+	repo.getErr = nil
+	delete(repo.users, "admin-1")
+	if w := serveAI(p, http.MethodPost, "/api/ai/review/approve", `{}`, bearer(adminToken)); w.Code != http.StatusUnauthorized {
+		t.Fatalf("deleted user: status %d, want 401", w.Code)
+	}
+}
+
+func TestAIProxyWithoutAdminMiddlewareDeniesModeration(t *testing.T) {
+	users := usecase.NewUserUsecase(nil, nil, nil, "fixture-jwt-secret")
+	h := &Handler{userUsecase: users}
+	p := NewAIProxyHandler(aiservice.NewAIServiceClient("http://127.0.0.1:1", aiProxyServiceToken), h.AuthMiddleware, nil)
+	if w := serveAI(p, http.MethodPost, "/api/ai/review/approve", `{}`, nil); w.Code != http.StatusForbidden {
+		t.Fatalf("status %d, want 403", w.Code)
 	}
 }

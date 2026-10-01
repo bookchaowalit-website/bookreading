@@ -252,6 +252,9 @@ resp, err := client.ListNovels(context.Background(), &pb.ListNovelsRequest{
   `backend/internal/delivery/http/ai_proxy_handler.go`); others return 404.
   Request bodies are capped at 2 MiB (32 MiB for manga image routes). The
   manga health/supported-* metadata routes are public.
+  `POST /api/ai/review/approve|edit|reject` additionally require the admin
+  role (403 otherwise, checked against the current user record); see
+  `ADMIN_EMAILS` in `.env.example`.
 - Service-to-service only: `http://ai-service:8000` (development:
   `http://localhost:8000`, loopback-bound). Not for browsers.
 

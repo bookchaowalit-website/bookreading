@@ -62,6 +62,20 @@ func NewServerDependencies(db *sqlx.DB) *ServerDependencies {
 	translationFeedbackRepo := postgres.NewTranslationFeedbackRepository(db)
 	apiKeyRepo := postgres.NewAPIKeyRepository(db)
 
+	// ADMIN_EMAILS promotes already-registered accounts to admin at startup.
+	// Registration is open and email is not verified, so list only addresses
+	// you have registered yourself; removing one does not demote it.
+	if emails := ParseAdminEmails(os.Getenv("ADMIN_EMAILS")); len(emails) > 0 && db != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		n, err := userRepo.PromoteAdmins(ctx, emails)
+		cancel()
+		if err != nil {
+			log.Printf("[WARN] ADMIN_EMAILS bootstrap failed (is migration 009 applied?): %v", err)
+		} else {
+			log.Printf("[INFO] ADMIN_EMAILS bootstrap: %d of %d listed accounts promoted", n, len(emails))
+		}
+	}
+
 	// Initialize AI client
 	aiServiceURL := os.Getenv("AI_SERVICE_URL")
 	if aiServiceURL == "" {
@@ -298,7 +312,7 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 
 	// ai-service proxy: the browser calls /api/ai/<allow-listed path> with its
 	// session; the backend forwards with AI_SERVICE_TOKEN via the aiservice client.
-	mux.Handle(AIProxyPrefix+"/", NewAIProxyHandler(deps.AIClient, h.AuthMiddleware))
+	mux.Handle(AIProxyPrefix+"/", NewAIProxyHandler(deps.AIClient, h.AuthMiddleware, h.AdminMiddleware))
 
 	// Health check (basic - just checks if server is running)
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
@@ -386,12 +400,23 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 	// CORS + Rate Limiting middleware
 	handler := middleware.ApplyRateLimiting(corsMiddleware(mux))
 
-	return &Server{
-		server: &http.Server{
-			Addr:    ":" + port,
-			Handler: handler,
-		},
-		deps: deps,
+	cfg, err := LoadServerConfig(os.Getenv)
+	if err != nil {
+		log.Fatalf("FATAL: invalid HTTP server configuration: %v", err)
+	}
+	return &Server{server: newHTTPServer(":"+port, handler, cfg), deps: deps}
+}
+
+// newHTTPServer applies cfg's limits to an http.Server.
+func newHTTPServer(addr string, handler http.Handler, cfg ServerConfig) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+		ReadTimeout:       cfg.ReadTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
+		MaxHeaderBytes:    cfg.MaxHeaderBytes,
 	}
 }
 

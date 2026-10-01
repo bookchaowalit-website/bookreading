@@ -79,6 +79,7 @@ func (u *UserUsecase) Register(ctx context.Context, input RegisterInput) (*AuthR
 		Name:               input.Name,
 		SubscriptionPlan:   "free",
 		SubscriptionStatus: "active",
+		Role:               domain.RoleUser,
 	}
 
 	if err := u.userRepo.Create(ctx, user); err != nil {

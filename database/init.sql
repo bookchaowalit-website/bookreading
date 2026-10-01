@@ -12,6 +12,7 @@ CREATE TABLE users (
     avatar_url VARCHAR(500),
     subscription_plan VARCHAR(50) DEFAULT 'free', -- free, pro, team
     subscription_status VARCHAR(50) DEFAULT 'active',
+    role VARCHAR(20) NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
     stripe_customer_id VARCHAR(255),
     stripe_subscription_id VARCHAR(255),
     stripe_event_at TIMESTAMPTZ,

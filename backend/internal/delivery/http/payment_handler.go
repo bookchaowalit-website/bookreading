@@ -86,7 +86,7 @@ func (h *PaymentHandler) GetPricingPlans(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *PaymentHandler) CreateCheckoutSession(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
@@ -383,7 +383,7 @@ func frontendURL() string {
 }
 
 func (h *PaymentHandler) GetSubscriptionStatus(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
@@ -402,7 +402,7 @@ func (h *PaymentHandler) GetSubscriptionStatus(w http.ResponseWriter, r *http.Re
 }
 
 func (h *PaymentHandler) CancelSubscription(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return
@@ -440,7 +440,7 @@ func (h *PaymentHandler) CancelSubscription(w http.ResponseWriter, r *http.Reque
 
 // CreateBillingPortal creates a Stripe Customer Portal session for subscription management
 func (h *PaymentHandler) CreateBillingPortal(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		respondError(w, http.StatusUnauthorized, "Unauthorized")
 		return

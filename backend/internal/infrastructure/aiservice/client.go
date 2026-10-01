@@ -87,6 +87,10 @@ type ExtractedTerm struct {
 	Confidence  float64 `json:"confidence"`
 }
 
+// RequestTimeout bounds one ai-service call (long agentic translations and
+// manga batches). The backend's HTTP WriteTimeout is sized above it.
+const RequestTimeout = 5 * time.Minute
+
 // NewAIServiceClient returns a client for the Python ai-service. When token is
 // non-empty every request carries "Authorization: Bearer <token>", matching the
 // service's optional AI_SERVICE_TOKEN check.
@@ -94,7 +98,7 @@ func NewAIServiceClient(baseURL, token string) AIServiceClient {
 	return &aiServiceClient{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   strings.TrimSpace(token),
-		client:  &http.Client{Timeout: 5 * time.Minute},
+		client:  &http.Client{Timeout: RequestTimeout},
 	}
 }
 

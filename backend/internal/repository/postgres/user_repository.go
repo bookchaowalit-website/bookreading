@@ -6,6 +6,7 @@ import (
 
 	"github.com/bookreading/backend/internal/domain"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 )
 
 type UserRepository struct {
@@ -85,6 +86,22 @@ func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
 		user.StripeSubscriptionID,
 		user.StripeEventAt,
 	).Scan(&user.UpdatedAt)
+}
+
+// PromoteAdmins grants the admin role to existing users whose email matches
+// one of emails (case-insensitive). It never demotes anyone and never
+// creates accounts. It returns the number of users changed.
+func (r *UserRepository) PromoteAdmins(ctx context.Context, emails []string) (int64, error) {
+	if len(emails) == 0 {
+		return 0, nil
+	}
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE users SET role = $1 WHERE lower(email) = ANY($2) AND role <> $1`,
+		domain.RoleAdmin, pq.Array(emails))
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 func (r *UserRepository) Delete(ctx context.Context, id string) error {

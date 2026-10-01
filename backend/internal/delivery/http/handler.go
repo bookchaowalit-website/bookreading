@@ -2,7 +2,9 @@ package http
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -17,9 +19,15 @@ import (
 // Email format validation regex
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 
-type contextKey string
+// ctxKey is the private type for request-context keys; a plain string key
+// would never match (context.Value compares key type and value).
+type ctxKey string
 
-const UserIDKey contextKey = "user_id"
+// UserIDKey holds the authenticated user ID set by AuthMiddleware.
+const UserIDKey ctxKey = "userID"
+
+// claimsKey holds the validated *usecase.Claims set by AuthMiddleware.
+const claimsKey ctxKey = "claims"
 
 type Handler struct {
 	userUsecase                *usecase.UserUsecase
@@ -133,7 +141,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 // Refresh rotates the token to extend the session
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
-	claims, ok := r.Context().Value("claims").(*usecase.Claims)
+	claims, ok := r.Context().Value(claimsKey).(*usecase.Claims)
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Invalid session"})
 		return
@@ -192,7 +200,7 @@ func (h *Handler) clearAuthCookie(w http.ResponseWriter) {
 }
 
 func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Unauthorized"})
 		return
@@ -208,7 +216,7 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Unauthorized"})
 		return
@@ -245,7 +253,7 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Unauthorized"})
 		return
@@ -262,7 +270,7 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 // Library handlers
 
 func (h *Handler) GetLibrary(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Unauthorized"})
 		return
@@ -278,7 +286,7 @@ func (h *Handler) GetLibrary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AddToLibrary(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Unauthorized"})
 		return
@@ -301,7 +309,7 @@ func (h *Handler) AddToLibrary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) RemoveFromLibrary(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Unauthorized"})
 		return
@@ -324,7 +332,7 @@ func (h *Handler) RemoveFromLibrary(w http.ResponseWriter, r *http.Request) {
 // Terminology handlers
 
 func (h *Handler) GetTerminology(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Unauthorized"})
 		return
@@ -340,7 +348,7 @@ func (h *Handler) GetTerminology(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AddTerminology(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Unauthorized"})
 		return
@@ -729,8 +737,36 @@ func (h *Handler) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 		ctx := r.Context()
 		ctx = contextWithUserID(ctx, claims.UserID)
+		ctx = context.WithValue(ctx, claimsKey, claims)
 		next(w, r.WithContext(ctx))
 	}
+}
+
+// AdminMiddleware is AuthMiddleware plus an admin-role check against the
+// current user record (so a demotion takes effect without a new token).
+func (h *Handler) AdminMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return h.AuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		userID, ok := GetUserIDFromContext(r.Context())
+		if !ok {
+			h.respond(w, http.StatusUnauthorized, Response{Error: "Authorization required"})
+			return
+		}
+		user, err := h.userUsecase.GetByID(r.Context(), userID)
+		if errors.Is(err, sql.ErrNoRows) {
+			h.respond(w, http.StatusUnauthorized, Response{Error: "User not found"})
+			return
+		}
+		if err != nil {
+			log.Printf("[ERROR] admin check: user lookup failed: %v", err)
+			h.respond(w, http.StatusServiceUnavailable, Response{Error: "Could not verify permissions"})
+			return
+		}
+		if !user.IsAdmin() {
+			h.respond(w, http.StatusForbidden, Response{Error: "Admin role required"})
+			return
+		}
+		next(w, r)
+	})
 }
 
 // Helper functions
@@ -741,14 +777,13 @@ func (h *Handler) respond(w http.ResponseWriter, status int, data interface{}) {
 	_ = json.NewEncoder(w).Encode(data)
 }
 
-type ctxKey string
-
 func contextWithUserID(ctx context.Context, userID string) context.Context {
-	return context.WithValue(ctx, ctxKey("userID"), userID)
+	return context.WithValue(ctx, UserIDKey, userID)
 }
 
-// GetUserIDFromContext extracts user ID from context
+// GetUserIDFromContext extracts the user ID AuthMiddleware stored. An empty
+// ID counts as missing.
 func GetUserIDFromContext(ctx context.Context) (string, bool) {
 	userID, ok := ctx.Value(UserIDKey).(string)
-	return userID, ok
+	return userID, ok && userID != ""
 }

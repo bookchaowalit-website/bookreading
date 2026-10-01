@@ -4,7 +4,7 @@ Living backlog for improvement passes. Keep it short and actionable.
 
 ## Current state
 
-**Score: 8.3/10** (8 after pass 6, 7.5 after pass 3, 7 after pass 2, 6 after pass 1, 5
+**Score: 8.6/10** (8.3 after pass 7, 8 after pass 6, 7.5 after pass 3, 7 after pass 2, 6 after pass 1, 5
 originally). Billing uses configured Stripe Prices (validated at startup),
 round-trips through webhooks order-safely and follows portal plan switches. Three services build and their unit tests
 pass locally; backend is golangci-lint clean; CI now runs the real checks.
@@ -22,21 +22,29 @@ Local check commands:
 ## Backlog
 
 ### P0
+- Subscription routes (`/api/subscriptions*`, `subscription_handler.go`)
+  take `user_id` from the query string instead of the session, so any
+  signed-in user can list/modify another user's subscriptions. Use
+  `GetUserIDFromContext` and ignore the query parameter; add tests.
 - (none open) Operator task before enabling billing: create recurring Prices
   in Stripe, set `STRIPE_PRICE_PRO`/`STRIPE_PRICE_TEAM`, and enable plan
   switching between them in the Stripe billing-portal configuration.
 
 ### P1
+- The migration chain alone does not build a working schema: 001 creates
+  `users` without `avatar_url`/`subscription_*`/`stripe_*` (only `init.sql`
+  has them), so `007_index_users_stripe_subscription` fails on a fresh DB.
+  Add a migration that adds the missing columns before 007's index.
 - Operator: set `AI_SERVICE_TOKEN` in the production `.env` now that the
   browser goes through `/api/ai` (backend and ai-service share it via
   `env_file`), then confirm `/api/ai/translate` works and a direct call to
   ai-service without the token gets 401.
-- `/api/ai/review/*` (approve/edit/reject) only needs a logged-in user; there
-  is no admin role yet. Add a role/allow-list check before opening sign-ups.
+- `/api/ai/review/pending` and `/stats` are still readable by any
+  signed-in user; decide whether the queue is admin-only too.
+- Frontend: hide review approve/edit/reject for non-admins (`role` is now in
+  `GET /api/users/me`).
 - Expensive `/api/ai` POSTs (translate, manga) only get the global rate
   limit; consider a per-user quota tied to the subscription plan.
-- The backend `http.Server` has no Read/Write/Idle timeouts; add them
-  (WriteTimeout must exceed the 5 min ai-service client timeout).
 - ai-service: Webtoons Playwright path resolves DNS inside Chromium; only
   navigations are held to the allow-list. Consider dropping the browser path
   or routing it through a pinned proxy.
@@ -55,7 +63,30 @@ Local check commands:
   warnings reported by `npm run lint`.
 - Consolidate the overlapping `ci.yml` and per-service workflows.
 
-## Done in this pass (pass 7: ai-service behind the backend, P1 closed)
+## Done in this pass (pass 8: admin role, server timeouts, auth context fix)
+- Fixed a P0 found while adding roles: `AuthMiddleware` stored the user ID
+  under a typed context key while handlers read the plain string `"userID"`
+  (and `GetUserIDFromContext` a third key), so every protected handler
+  (`/api/users/me`, library, terminology, payments, API keys, reading
+  feedback) answered 401 after a valid login, and `/api/auth/refresh`
+  never found its claims. One typed key now; regression test added.
+- Admin role: migration `009_add_users_role` (up/down; `role` defaults to
+  `user`, CHECK user|admin; `init.sql` updated), `domain.User.Role`,
+  `Handler.AdminMiddleware` (role read from the user record so demotion is
+  immediate; 403 non-admin, 401 unknown user, 503 lookup failure).
+  `POST /api/ai/review/approve|edit|reject` are admin-only and never reach
+  ai-service otherwise. Bootstrap: `ADMIN_EMAILS` promotes existing
+  accounts at startup (never creates or demotes; no hard-coded account).
+- `http.Server` limits from `LoadServerConfig` (`HTTP_READ_HEADER_TIMEOUT`
+  10s, `HTTP_READ_TIMEOUT` 60s, `HTTP_WRITE_TIMEOUT` 5m30s above
+  `aiservice.RequestTimeout`, `HTTP_IDLE_TIMEOUT` 120s,
+  `HTTP_MAX_HEADER_BYTES` 1 MiB); invalid values fail startup.
+- Verified: gofmt, go vet, `go test -race ./...`, golangci-lint 0 issues.
+  Migrations 001-009 applied to a throwaway Postgres 16: 009 up/down/up is
+  idempotent, the CHECK rejects unknown roles, and the `PromoteAdmins`
+  UPDATE promotes case-insensitively; `init.sql` loads with the new column.
+
+## Done in pass 7: ai-service behind the backend, P1 closed
 - P1 "frontend calls ai-service from the browser" done: new
   `backend/internal/delivery/http/ai_proxy_handler.go` serves `/api/ai/*`
   behind `Handler.AuthMiddleware` (cookie or bearer JWT) and forwards via the

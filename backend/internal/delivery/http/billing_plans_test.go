@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -97,7 +96,7 @@ func TestBillingPlansLookup(t *testing.T) {
 
 func authedRequest(method, target, body string) *http.Request {
 	req := httptest.NewRequest(method, target, strings.NewReader(body))
-	return req.WithContext(context.WithValue(req.Context(), "userID", "user-1")) //nolint:staticcheck // matches AuthMiddleware's key
+	return req.WithContext(contextWithUserID(req.Context(), "user-1"))
 }
 
 func TestGetPricingPlansUsesConfiguredCatalog(t *testing.T) {
