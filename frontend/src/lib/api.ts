@@ -29,6 +29,19 @@ if (typeof window !== 'undefined') {
   });
 }
 
+/**
+ * Authorization header for raw fetch() calls. The session normally travels in
+ * the same-origin HTTP-only cookie; a dev token in localStorage is added only
+ * when present, so we never send "Bearer null".
+ */
+export function authHeader(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  const token = window.localStorage.getItem('token');
+  return token && token !== 'null' && token !== 'undefined'
+    ? { Authorization: `Bearer ${token}` }
+    : {};
+}
+
 export interface User {
   id: string;
   email: string;

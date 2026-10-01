@@ -438,3 +438,22 @@ describe('New API Client (@/lib/new-api)', () => {
     });
   });
 });
+
+describe('authHeader', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('omits Authorization without a stored token (the cookie carries the session)', async () => {
+    const { authHeader } = await loadApi();
+    expect(authHeader()).toEqual({});
+    localStorage.setItem('token', 'null');
+    expect(authHeader()).toEqual({});
+  });
+
+  it('sends a stored dev token as a bearer header', async () => {
+    const { authHeader } = await loadApi();
+    localStorage.setItem('token', 'abc');
+    expect(authHeader()).toEqual({ Authorization: 'Bearer abc' });
+  });
+});

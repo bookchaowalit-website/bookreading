@@ -614,8 +614,12 @@ func (h *Handler) TranslateChapter(w http.ResponseWriter, r *http.Request) {
 		input.TargetLang = "th"
 	}
 
-	// If translated_text is provided, save it directly (from frontend translation)
+	// If translated_text is provided, save it directly (from frontend translation).
+	// It overwrites the chapter text every reader sees, so only admins may.
 	if input.TranslatedText != "" {
+		if !h.requireAdmin(w, r) {
+			return
+		}
 		chapter, err := h.chapterUsecase.GetChapter(r.Context(), chapterID)
 		if err != nil {
 			h.respond(w, http.StatusInternalServerError, Response{Error: err.Error()})
@@ -718,11 +722,10 @@ func (h *Handler) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var tokenString string
 
-		// Try Authorization header first (for API clients)
-		authHeader := r.Header.Get("Authorization")
-		if authHeader != "" {
-			tokenString = strings.TrimPrefix(authHeader, "Bearer ")
-		}
+		// Try Authorization header first (for API clients). Browser code that
+		// reads a missing localStorage token sends "Bearer null"; treat such
+		// placeholders as no header so the session cookie still applies.
+		tokenString = bearerToken(r.Header.Get("Authorization"))
 
 		// Fall back to HTTP-only cookie (for browser clients)
 		if tokenString == "" {
@@ -754,30 +757,59 @@ func (h *Handler) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 // current user record (so a demotion takes effect without a new token).
 func (h *Handler) AdminMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return h.AuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		userID, ok := GetUserIDFromContext(r.Context())
-		if !ok {
-			h.respond(w, http.StatusUnauthorized, Response{Error: "Authorization required"})
-			return
+		if h.requireAdmin(w, r) {
+			next(w, r)
 		}
-		user, err := h.userUsecase.GetByID(r.Context(), userID)
-		if errors.Is(err, sql.ErrNoRows) {
-			h.respond(w, http.StatusUnauthorized, Response{Error: "User not found"})
-			return
-		}
-		if err != nil {
-			log.Printf("[ERROR] admin check: user lookup failed: %v", err)
-			h.respond(w, http.StatusServiceUnavailable, Response{Error: "Could not verify permissions"})
-			return
-		}
-		if !user.IsAdmin() {
-			h.respond(w, http.StatusForbidden, Response{Error: "Admin role required"})
-			return
-		}
-		next(w, r)
 	})
 }
 
+// requireAdmin checks that the authenticated session user is currently an
+// admin. It writes the error response and returns false otherwise. Use it
+// behind AuthMiddleware for handlers where only some requests need admin.
+func (h *Handler) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
+	userID, ok := GetUserIDFromContext(r.Context())
+	if !ok {
+		h.respond(w, http.StatusUnauthorized, Response{Error: "Authorization required"})
+		return false
+	}
+	user, err := h.userUsecase.GetByID(r.Context(), userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		h.respond(w, http.StatusUnauthorized, Response{Error: "User not found"})
+		return false
+	}
+	if err != nil {
+		log.Printf("[ERROR] admin check: user lookup failed: %v", err)
+		h.respond(w, http.StatusServiceUnavailable, Response{Error: "Could not verify permissions"})
+		return false
+	}
+	if user == nil {
+		h.respond(w, http.StatusUnauthorized, Response{Error: "User not found"})
+		return false
+	}
+	if !user.IsAdmin() {
+		h.respond(w, http.StatusForbidden, Response{Error: "Admin role required"})
+		return false
+	}
+	return true
+}
+
 // Helper functions
+
+// bearerToken returns the token of an "Authorization: Bearer <token>" header,
+// or "" when the header is absent or carries an empty/"null"/"undefined"
+// placeholder.
+func bearerToken(header string) string {
+	header = strings.TrimSpace(header)
+	if len(header) < 7 || !strings.EqualFold(header[:7], "Bearer ") {
+		return ""
+	}
+	token := strings.TrimSpace(header[7:])
+	switch token {
+	case "", "null", "undefined":
+		return ""
+	}
+	return token
+}
 
 func (h *Handler) respond(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")

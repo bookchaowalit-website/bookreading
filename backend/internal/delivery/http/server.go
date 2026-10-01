@@ -143,6 +143,49 @@ func NewServerDependencies(db *sqlx.DB) *ServerDependencies {
 type Server struct {
 	server *http.Server
 	deps   *ServerDependencies
+	routes []string // every registered mux pattern, for the route-access test
+}
+
+// routeMux is an http.ServeMux that remembers the patterns registered on it,
+// so routes_access_test.go can walk the real route table and fail on any
+// route that has no declared access level.
+type routeMux struct {
+	*http.ServeMux
+	patterns []string
+}
+
+func (m *routeMux) Handle(pattern string, h http.Handler) {
+	m.patterns = append(m.patterns, pattern)
+	m.ServeMux.Handle(pattern, h)
+}
+
+func (m *routeMux) HandleFunc(pattern string, f func(http.ResponseWriter, *http.Request)) {
+	m.Handle(pattern, http.HandlerFunc(f))
+}
+
+// postOnly serves next for POST and answers 405 otherwise.
+func postOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		next(w, r)
+	}
+}
+
+// readOnly serves next for GET (and HEAD) and answers 405 otherwise: public
+// catalog reads must never accept a state-changing method.
+func readOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		next(w, r)
+	}
 }
 
 // NewServerWithDeps creates a new HTTP server with injected dependencies
@@ -150,13 +193,15 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 	// Initialize handlers with shared dependencies
 	h := NewHandlerWithDeps(deps)
 
-	// Setup routes
-	mux := http.NewServeMux()
+	// Setup routes. Access levels (public / authenticated / admin) are pinned
+	// per route and method by routes_access_test.go: a new route fails CI
+	// until it is classified there.
+	mux := &routeMux{ServeMux: http.NewServeMux()}
 
 	// Auth routes (public) - with stricter auth rate limiting (5 req/min)
-	mux.Handle("/api/auth/register", middleware.AuthRateLimitMiddleware(http.HandlerFunc(h.Register)))
-	mux.Handle("/api/auth/login", middleware.AuthRateLimitMiddleware(http.HandlerFunc(h.Login)))
-	mux.HandleFunc("/api/auth/logout", h.Logout)
+	mux.Handle("/api/auth/register", middleware.AuthRateLimitMiddleware(postOnly(h.Register)))
+	mux.Handle("/api/auth/login", middleware.AuthRateLimitMiddleware(postOnly(h.Login)))
+	mux.HandleFunc("/api/auth/logout", postOnly(h.Logout)) // clears the caller's own cookie only
 	mux.HandleFunc("/api/auth/refresh", h.AuthMiddleware(h.Refresh))
 
 	// Protected routes
@@ -192,26 +237,38 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 		}
 	})
 
-	// Novel routes (public for reading)
+	// Novel routes: catalog reads are public. Adding or re-scraping a novel
+	// fetches an arbitrary URL server-side and writes the shared catalog, and
+	// no per-user copy exists, so it is admin-only.
 	mux.HandleFunc("/api/novels", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			h.ListNovels(w, r)
 		case http.MethodPost:
-			h.ScrapeNovel(w, r)
+			h.AdminMiddleware(h.ScrapeNovel)(w, r)
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
-	mux.HandleFunc("/api/novels/detail", h.GetNovel)
+	mux.HandleFunc("/api/novels/detail", readOnly(h.GetNovel))
 
-	// Chapter routes (public for reading)
-	mux.HandleFunc("/api/chapters", h.ListChapters)
-	mux.HandleFunc("/api/chapters/detail", h.GetChapter)
-	mux.HandleFunc("/api/chapters/by-number", h.GetChapterByNumber)
-	mux.Handle("/api/chapters/update", http.HandlerFunc(h.UpdateChapter))
-	// Chapter translation endpoint - with stricter rate limiting (10 req/min)
-	mux.Handle("/api/chapters/translate", middleware.TranslationRateLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// Chapter routes: reads are public; chapter text is shared by every
+	// reader, so overwriting it is admin-only.
+	mux.HandleFunc("/api/chapters", readOnly(h.ListChapters))
+	mux.HandleFunc("/api/chapters/detail", readOnly(h.GetChapter))
+	mux.HandleFunc("/api/chapters/by-number", readOnly(h.GetChapterByNumber))
+	mux.HandleFunc("/api/chapters/update", h.AdminMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost && r.Method != http.MethodPut {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		h.UpdateChapter(w, r)
+	}))
+	// Chapter translation - with stricter rate limiting (10 req/min). A signed-in
+	// user may run the server-side translation (the AI writes the shared cache
+	// once); saving caller-supplied translated_text is admin-only (checked in
+	// TranslateChapter).
+	mux.Handle("/api/chapters/translate", middleware.TranslationRateLimitMiddleware(h.AuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			h.TranslateChapter(w, r)
 		} else {
@@ -220,8 +277,8 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 	})))
 
 	// Translation history routes (public for reading) - with stricter rate limiting (10 req/min)
-	mux.Handle("/api/translations/history", middleware.TranslationRateLimitMiddleware(http.HandlerFunc(h.GetTranslationHistory)))
-	mux.Handle("/api/translations/cached", middleware.TranslationRateLimitMiddleware(http.HandlerFunc(h.GetCachedTranslation)))
+	mux.Handle("/api/translations/history", middleware.TranslationRateLimitMiddleware(readOnly(h.GetTranslationHistory)))
+	mux.Handle("/api/translations/cached", middleware.TranslationRateLimitMiddleware(readOnly(h.GetCachedTranslation)))
 
 	// Novel subscription routes (protected)
 	mux.Handle("/api/subscriptions", h.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -298,7 +355,7 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 
 	// Payment routes
 	paymentHandler := NewPaymentHandlerWithPlans(deps.UserRepo, deps.BillingPlans)
-	mux.HandleFunc("/api/payments/stripe/webhook", paymentHandler.HandleWebhook)
+	mux.HandleFunc("/api/payments/stripe/webhook", postOnly(paymentHandler.HandleWebhook)) // Stripe-signed, no session
 	mux.HandleFunc("/api/payments/plans", h.AuthMiddleware(paymentHandler.GetPricingPlans))
 	mux.HandleFunc("/api/payments/stripe/checkout", h.AuthMiddleware(paymentHandler.CreateCheckoutSession))
 	mux.HandleFunc("/api/payments/stripe/billing-portal", h.AuthMiddleware(paymentHandler.CreateBillingPortal))
@@ -310,14 +367,14 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 	mux.Handle(AIProxyPrefix+"/", NewAIProxyHandler(deps.AIClient, h.AuthMiddleware, h.AdminMiddleware))
 
 	// Health check (basic - just checks if server is running)
-	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/health", readOnly(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"healthy","service":"backend","version":"1.0.0"}`))
-	})
+	}))
 
 	// Ready check (for Kubernetes/Docker) - checks all dependencies
-	mux.HandleFunc("/api/ready", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/ready", readOnly(func(w http.ResponseWriter, r *http.Request) {
 		// Check database
 		dbStatus := "up"
 		if err := deps.DB.Ping(); err != nil {
@@ -351,10 +408,10 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(resp)
-	})
+	}))
 
 	// Detailed health check with all dependencies
-	mux.HandleFunc("/api/health/detailed", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/health/detailed", readOnly(func(w http.ResponseWriter, r *http.Request) {
 		type DependencyHealth struct {
 			Status    string `json:"status"`
 			LatencyMs int    `json:"latency_ms,omitempty"`
@@ -390,7 +447,7 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 			w.WriteHeader(http.StatusPartialContent)
 		}
 		_ = json.NewEncoder(w).Encode(resp)
-	})
+	}))
 
 	// CORS + Rate Limiting middleware
 	handler := middleware.ApplyRateLimiting(corsMiddleware(mux))
@@ -399,7 +456,7 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 	if err != nil {
 		log.Fatalf("FATAL: invalid HTTP server configuration: %v", err)
 	}
-	return &Server{server: newHTTPServer(":"+port, handler, cfg), deps: deps}
+	return &Server{server: newHTTPServer(":"+port, handler, cfg), deps: deps, routes: mux.patterns}
 }
 
 // newHTTPServer applies cfg's limits to an http.Server.

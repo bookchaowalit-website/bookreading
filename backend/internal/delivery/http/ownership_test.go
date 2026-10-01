@@ -232,6 +232,7 @@ func (r *fakeTermRepo) Delete(_ context.Context, userID, id string) error {
 
 type ownershipFixture struct {
 	handler              http.Handler
+	routes               []string
 	aliceToken, bobToken string
 	adminToken           string
 	subs                 *fakeSubRepo
@@ -246,6 +247,13 @@ type ownershipFixture struct {
 var ownershipIP atomic.Int64
 
 func newOwnershipFixture(t *testing.T) *ownershipFixture {
+	t.Helper()
+	return newOwnershipFixtureWith(t, nil)
+}
+
+// newOwnershipFixtureWith lets a test adjust the dependencies (for example
+// inject a chapter use case) before the route table is built.
+func newOwnershipFixtureWith(t *testing.T, adjust func(*ServerDependencies)) *ownershipFixture {
 	t.Helper()
 	alice := &domain.User{ID: "alice", Email: "alice@example.test", Role: domain.RoleUser}
 	bob := &domain.User{ID: "bob", Email: "bob@example.test", Role: domain.RoleUser}
@@ -267,7 +275,11 @@ func newOwnershipFixture(t *testing.T) *ownershipFixture {
 		BookmarkUseCase:            usecase.NewBookmarkUseCase(f.bookmarks),
 		TranslationFeedbackUseCase: usecase.NewTranslationFeedbackUseCase(f.feedback),
 	}
-	f.handler = NewServerWithDeps(deps, "0").server.Handler
+	if adjust != nil {
+		adjust(deps)
+	}
+	srv := NewServerWithDeps(deps, "0")
+	f.handler, f.routes = srv.server.Handler, srv.routes
 	for _, p := range []struct {
 		u   *domain.User
 		dst *string

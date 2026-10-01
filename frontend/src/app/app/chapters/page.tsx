@@ -95,7 +95,12 @@ export default function ChaptersPage() {
       setNovelFromDb(novelData);
 
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to load chapters. Please try again.');
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        // Adding a novel to the shared catalog is admin-only on the backend.
+        setError('นิยายเรื่องนี้ยังไม่ถูกเพิ่มเข้าระบบ ผู้ดูแลระบบต้องเพิ่มก่อนจึงจะอ่านได้');
+      } else {
+        setError(err.response?.data?.error || 'Failed to load chapters. Please try again.');
+      }
     } finally {
       setIsLoading(false);
       setIsScraping(false);

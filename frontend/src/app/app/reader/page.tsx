@@ -5,7 +5,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { BookOpen, Bookmark as BookmarkIcon, Globe, MessageSquare } from 'lucide-react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import api, { aiApi, novelApi, chapterApi, translationApi, ExtractedTerm, Chapter as DbChapter, Novel } from '@/lib/api';
+import api, { authHeader, aiApi, novelApi, chapterApi, translationApi, ExtractedTerm, Chapter as DbChapter, Novel } from '@/lib/api';
 import { FEATURED_NOVELS, getNovelById, FeaturedNovel } from '@/lib/novels';
 import ReadingProgressBar from '@/components/ReadingProgressBar';
 import Skeleton from '@/components/Skeleton';
@@ -13,6 +13,7 @@ import { useTranslationFeedback } from '@/hooks/useTranslationFeedback';
 import { getErrorDisplay } from '@/lib/translationErrors';
 import { useCurrentReadingSession, useBookmarks } from '@/hooks/useReadingProgress';
 import { Bookmark } from '@/lib/types/features';
+import { useIsAdmin } from '@/hooks/useIsAdmin';
 
 // Dynamic imports for heavy/secondary components
 const ReadingProgressTracker = dynamic(() => import('@/components/ReadingProgressTracker'), {
@@ -170,6 +171,9 @@ export default function ReaderPage() {
   const [totalChaptersForNav, setTotalChaptersForNav] = useState(0);
   const [showNovelSelector, setShowNovelSelector] = useState(false);
   const [customNovelUrl, setCustomNovelUrl] = useState('');
+  // Adding novels and saving chapter text change the shared catalog: the
+  // backend allows it for admins only, so readers skip those calls.
+  const { isAdmin } = useIsAdmin();
   const [isLoadingCustomNovel, setIsLoadingCustomNovel] = useState(false);
   const [selectedModel, setSelectedModel] = useState<AIModel>('gpt-4o');
   const [showRefineModal, setShowRefineModal] = useState(false);
@@ -414,12 +418,11 @@ export default function ReaderPage() {
     setError('');
 
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch('/api/novels', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          ...authHeader(),
         },
         body: JSON.stringify({
           url: customNovelUrl.trim(),
@@ -582,14 +585,14 @@ export default function ReaderPage() {
         return { ...prev, chapters: updatedChapters };
       });
 
-      // Save translation to backend - this is the critical step for persistence
-      if (currentChapter.id) {
+      // Save translation to the shared chapter (admin only; readers keep it locally)
+      if (currentChapter.id && isAdmin) {
         try {
           const response = await fetch(`/api/chapters/translate?id=${currentChapter.id}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
+              ...authHeader(),
             },
             body: JSON.stringify({
               target_lang: 'th',
@@ -724,13 +727,13 @@ export default function ReaderPage() {
       try {
         const result = await aiApi.fetchChapterContent(targetChapter.url);
 
-        // Save original content to DB so it persists
-        if (targetChapter.id && result.content) {
+        // Save original content to DB so it persists (admin only)
+        if (isAdmin && targetChapter.id && result.content) {
           fetch(`/api/chapters/update?id=${targetChapter.id}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
+              ...authHeader(),
             },
             body: JSON.stringify({
               original_content: result.content,
@@ -994,7 +997,8 @@ export default function ReaderPage() {
             </div>
           )}
 
-          {/* Custom URL Input */}
+          {/* Custom URL Input (admins: it adds the novel to the shared catalog) */}
+          {isAdmin && (
           <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
               ➕ เพิ่มนิยายจาก URL
@@ -1019,6 +1023,7 @@ export default function ReaderPage() {
               รองรับ: piaotia.com, qidian.com และเว็บไซต์นิยายจีนอื่นๆ
             </p>
           </div>
+          )}
         </div>
       )}
 

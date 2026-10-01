@@ -25,7 +25,9 @@ services:
       dockerfile: Dockerfile
     container_name: bookreading-backend
     ports:
-      - "9091:9090"
+      # gRPC: loopback only. Callers must also send
+      # "authorization: Bearer $GRPC_SERVICE_TOKEN" (required when NODE_ENV=production).
+      - "127.0.0.1:9091:9090"
       - "8888:8080"
     env_file:
       - .env
