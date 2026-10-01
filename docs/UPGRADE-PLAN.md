@@ -100,6 +100,10 @@ Local check commands:
 - Frontend: reader uses `authHeader()` (no `Bearer null`), shows "add novel
   from URL" and persists chapter text only for admins; the chapters page
   explains a 403 on a not-yet-added featured novel.
+- Compose network exposure: Postgres (`5432`) and the backend HTTP port
+  (`8888`) now publish on `127.0.0.1` by default, like gRPC and ai-service;
+  `POSTGRES_BIND` / `BACKEND_BIND` override. Only the frontend (`3000`)
+  listens on all interfaces. Checked with `docker compose config`.
 - Verified: go vet, `go test -race ./...`, golangci-lint 0 issues; a
   mutation check (unprotecting `/api/chapters/update`, adding an
   unclassified route) fails the new tests; frontend tsc, vitest 69/69,

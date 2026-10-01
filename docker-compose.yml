@@ -7,7 +7,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: bookreading
     ports:
-      - "5432:5432"
+      # Loopback only: the backend and ai-service reach postgres:5432 on the
+      # compose network. Set POSTGRES_BIND=0.0.0.0 to expose it deliberately.
+      - "${POSTGRES_BIND:-127.0.0.1}:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -28,7 +30,9 @@ services:
       # gRPC: loopback only. Callers must also send
       # "authorization: Bearer $GRPC_SERVICE_TOKEN" (required when NODE_ENV=production).
       - "127.0.0.1:9091:9090"
-      - "8888:8080"
+      # HTTP API: loopback by default (the browser calls localhost:8888 and the
+      # frontend container uses backend:8080). BACKEND_BIND=0.0.0.0 exposes it.
+      - "${BACKEND_BIND:-127.0.0.1}:8888:8080"
     env_file:
       - .env
     environment:
