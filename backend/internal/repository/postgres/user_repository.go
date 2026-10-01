@@ -226,8 +226,18 @@ func (r *UserTerminologyRepository) Update(ctx context.Context, term *domain.Use
 	).Scan(&term.UpdatedAt)
 }
 
-func (r *UserTerminologyRepository) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM user_terminology WHERE id = $1`
-	_, err := r.db.ExecContext(ctx, query, id)
-	return err
+func (r *UserTerminologyRepository) Delete(ctx context.Context, userID, id string) error {
+	query := `DELETE FROM user_terminology WHERE id = $1 AND user_id = $2`
+	res, err := r.db.ExecContext(ctx, query, id, userID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }

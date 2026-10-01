@@ -1,9 +1,18 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"log"
 	"net/http"
+	"time"
+
+	"github.com/bookreading/backend/internal/domain"
 )
+
+// triggerUpdateTimeout bounds a manual update run; it outlives the request.
+const triggerUpdateTimeout = 30 * time.Minute
 
 // SubscribeRequest represents the request body for subscribing to a novel
 type SubscribeRequest struct {
@@ -19,6 +28,11 @@ func (h *Handler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID, ok := sessionUserID(w, r)
+	if !ok {
+		return
+	}
+
 	var req SubscribeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		BadRequest(w, err, "Invalid request body")
@@ -30,7 +44,7 @@ func (h *Handler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subscription, err := h.novelUpdateUseCase.SubscribeToNovel(r.Context(), req.NovelID, req.SourceURL, req.SourceType, nil)
+	subscription, err := h.novelUpdateUseCase.SubscribeToNovel(r.Context(), req.NovelID, req.SourceURL, req.SourceType, userID)
 	if err != nil {
 		InternalServerError(w, err, "Failed to subscribe to novel")
 		return
@@ -49,13 +63,22 @@ func (h *Handler) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID, ok := sessionUserID(w, r)
+	if !ok {
+		return
+	}
+
 	subscriptionID := r.URL.Query().Get("id")
 	if subscriptionID == "" {
 		BadRequest(w, nil, "id is required")
 		return
 	}
 
-	if err := h.novelUpdateUseCase.UnsubscribeFromNovel(r.Context(), subscriptionID); err != nil {
+	if err := h.novelUpdateUseCase.UnsubscribeFromNovel(r.Context(), userID, subscriptionID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			NotFound(w, "Subscription not found")
+			return
+		}
 		InternalServerError(w, err, "Failed to unsubscribe from novel")
 		return
 	}
@@ -73,10 +96,8 @@ func (h *Handler) GetSubscriptions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		// Return all active subscriptions if no user_id provided
-		BadRequest(w, nil, "user_id is required")
+	userID, ok := sessionUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -92,16 +113,26 @@ func (h *Handler) GetSubscriptions(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// TriggerUpdate handles POST /api/subscriptions/trigger-update
+// TriggerUpdate handles POST /api/subscriptions/trigger-update. It checks
+// every due subscription (all users), so the route is admin-only.
 func (h *Handler) TriggerUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	if h.novelUpdateUseCase == nil {
 		InternalServerError(w, nil, "Novel update feature not available")
 		return
 	}
 
-	// Trigger manual update (async)
+	// The request context is cancelled as soon as this handler returns, so
+	// the async run gets its own bounded context.
+	uc := h.novelUpdateUseCase
 	go func() {
-		h.novelUpdateUseCase.RunScheduledUpdates(r.Context())
+		ctx, cancel := context.WithTimeout(context.Background(), triggerUpdateTimeout)
+		defer cancel()
+		ok, failed := uc.RunScheduledUpdates(ctx)
+		log.Printf("[INFO] manual novel update finished: %d ok, %d failed", ok, failed)
 	}()
 
 	WriteJSON(w, http.StatusAccepted, SuccessResponse{

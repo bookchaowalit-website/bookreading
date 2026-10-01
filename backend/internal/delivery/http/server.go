@@ -242,7 +242,8 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})))
-	mux.Handle("/api/subscriptions/trigger-update", h.AuthMiddleware(http.HandlerFunc(h.TriggerUpdate)))
+	// Runs the update check for every user's due subscriptions: admin only.
+	mux.Handle("/api/subscriptions/trigger-update", h.AdminMiddleware(h.TriggerUpdate))
 	mux.Handle("/api/subscriptions/history", h.AuthMiddleware(http.HandlerFunc(h.GetUpdateHistory)))
 
 	// Reading progress routes (protected)

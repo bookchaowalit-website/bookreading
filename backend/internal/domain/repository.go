@@ -27,7 +27,8 @@ type UserTerminologyRepository interface {
 	Create(ctx context.Context, term *UserTerminology) error
 	GetByUserID(ctx context.Context, userID string) ([]UserTerminology, error)
 	Update(ctx context.Context, term *UserTerminology) error
-	Delete(ctx context.Context, id string) error
+	// Delete removes the term only when userID owns it; ErrNotFound otherwise.
+	Delete(ctx context.Context, userID, id string) error
 }
 
 // Novel-related repositories

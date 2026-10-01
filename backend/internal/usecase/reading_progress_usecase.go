@@ -70,11 +70,6 @@ func (uc *ReadingProgressUseCase) GetNovelProgress(ctx context.Context, userID, 
 	return uc.repo.GetByNovelID(ctx, userID, novelID)
 }
 
-// DeleteProgress deletes a reading progress entry
-func (uc *ReadingProgressUseCase) DeleteProgress(ctx context.Context, id string) error {
-	return uc.repo.Delete(ctx, id)
-}
-
 // BookmarkUseCase handles bookmark operations
 type BookmarkUseCase struct {
 	repo domain.BookmarkRepository
@@ -133,11 +128,22 @@ func (uc *BookmarkUseCase) GetNovelBookmarks(ctx context.Context, userID, novelI
 	return uc.repo.GetByNovelID(ctx, userID, novelID)
 }
 
-// RemoveBookmark deletes a bookmark
-func (uc *BookmarkUseCase) RemoveBookmark(ctx context.Context, id string) error {
+// RemoveBookmark deletes userID's bookmark. A missing bookmark or one owned
+// by another user returns domain.ErrNotFound.
+func (uc *BookmarkUseCase) RemoveBookmark(ctx context.Context, userID, id string) error {
+	if userID == "" {
+		return errors.New("user_id is required")
+	}
 	if id == "" {
 		return errors.New("bookmark id is required")
 	}
 
+	bookmark, err := uc.repo.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to load bookmark: %w", err)
+	}
+	if bookmark == nil || bookmark.UserID != userID {
+		return domain.ErrNotFound
+	}
 	return uc.repo.Delete(ctx, id)
 }

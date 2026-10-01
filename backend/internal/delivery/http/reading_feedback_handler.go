@@ -2,9 +2,11 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
+	"github.com/bookreading/backend/internal/domain"
 	"github.com/bookreading/backend/internal/usecase"
 )
 
@@ -31,14 +33,9 @@ func (h *Handler) SaveReadingProgress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get user ID from context (set by auth middleware)
-	userID, ok := GetUserIDFromContext(r.Context())
+	userID, ok := sessionUserID(w, r)
 	if !ok {
-		// Try from query param for backward compatibility
-		userID = r.URL.Query().Get("user_id")
-		if userID == "" {
-			Unauthorized(w, "User ID is required")
-			return
-		}
+		return
 	}
 
 	progress, err := h.readingProgressUseCase.SaveProgress(
@@ -66,9 +63,8 @@ func (h *Handler) GetReadingProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		BadRequest(w, nil, "user_id is required")
+	userID, ok := sessionUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -91,11 +87,13 @@ func (h *Handler) GetNovelProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := r.URL.Query().Get("user_id")
+	userID, ok := sessionUserID(w, r)
+	if !ok {
+		return
+	}
 	novelID := r.URL.Query().Get("novel_id")
-
-	if userID == "" || novelID == "" {
-		BadRequest(w, nil, "user_id and novel_id are required")
+	if novelID == "" {
+		BadRequest(w, nil, "novel_id is required")
 		return
 	}
 
@@ -134,13 +132,9 @@ func (h *Handler) AddBookmark(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, ok := GetUserIDFromContext(r.Context())
+	userID, ok := sessionUserID(w, r)
 	if !ok {
-		userID = r.URL.Query().Get("user_id")
-		if userID == "" {
-			Unauthorized(w, "User ID is required")
-			return
-		}
+		return
 	}
 
 	bookmark, err := h.bookmarkUseCase.AddBookmark(
@@ -169,9 +163,8 @@ func (h *Handler) GetBookmarks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		BadRequest(w, nil, "user_id is required")
+	userID, ok := sessionUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -194,11 +187,13 @@ func (h *Handler) GetNovelBookmarks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := r.URL.Query().Get("user_id")
+	userID, ok := sessionUserID(w, r)
+	if !ok {
+		return
+	}
 	novelID := r.URL.Query().Get("novel_id")
-
-	if userID == "" || novelID == "" {
-		BadRequest(w, nil, "user_id and novel_id are required")
+	if novelID == "" {
+		BadRequest(w, nil, "novel_id is required")
 		return
 	}
 
@@ -221,13 +216,22 @@ func (h *Handler) RemoveBookmark(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID, ok := sessionUserID(w, r)
+	if !ok {
+		return
+	}
+
 	bookmarkID := r.URL.Query().Get("id")
 	if bookmarkID == "" {
 		BadRequest(w, nil, "id is required")
 		return
 	}
 
-	if err := h.bookmarkUseCase.RemoveBookmark(r.Context(), bookmarkID); err != nil {
+	if err := h.bookmarkUseCase.RemoveBookmark(r.Context(), userID, bookmarkID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			NotFound(w, "Bookmark not found")
+			return
+		}
 		InternalServerError(w, err, "Failed to remove bookmark")
 		return
 	}
@@ -255,9 +259,9 @@ func (h *Handler) SubmitFeedback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, ok := GetUserIDFromContext(r.Context())
+	userID, ok := sessionUserID(w, r)
 	if !ok {
-		userID = r.URL.Query().Get("user_id")
+		return
 	}
 
 	feedback, err := h.translationFeedbackUseCase.SubmitFeedback(r.Context(), userID, req)
@@ -279,9 +283,8 @@ func (h *Handler) GetFeedback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		BadRequest(w, nil, "user_id is required")
+	userID, ok := sessionUserID(w, r)
+	if !ok {
 		return
 	}
 

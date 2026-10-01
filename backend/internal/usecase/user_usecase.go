@@ -201,6 +201,8 @@ func (u *UserUsecase) UpdateTerminology(ctx context.Context, term *domain.UserTe
 	return u.termRepo.Update(ctx, term)
 }
 
-func (u *UserUsecase) DeleteTerminology(ctx context.Context, id string) error {
-	return u.termRepo.Delete(ctx, id)
+// DeleteTerminology deletes userID's term; domain.ErrNotFound when the term
+// does not exist or belongs to another user.
+func (u *UserUsecase) DeleteTerminology(ctx context.Context, userID, id string) error {
+	return u.termRepo.Delete(ctx, userID, id)
 }

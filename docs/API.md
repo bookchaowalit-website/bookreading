@@ -19,6 +19,18 @@ Most endpoints require JWT authentication via the `Authorization` header:
 Authorization: Bearer <jwt_token>
 ```
 
+### Per-user data is scoped to the session
+
+`/api/library`, `/api/terminology`, `/api/subscriptions`,
+`/api/reading-progress*`, `/api/bookmarks*`, `/api/feedback`,
+`/api/settings/api-keys` and `/api/payments/*` always act on the
+authenticated user. A legacy `user_id` query parameter is optional: a value
+equal to the session user is ignored, any other value returns `403`.
+Deleting a subscription, bookmark or terminology entry by `id` that belongs to
+another user returns `404` (same as a missing record).
+`POST /api/subscriptions/trigger-update` runs the update check for every
+user's due subscriptions and requires the admin role.
+
 ### Endpoints
 
 #### Health Check

@@ -370,13 +370,21 @@ func (h *Handler) AddTerminology(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteTerminology(w http.ResponseWriter, r *http.Request) {
+	userID, ok := sessionUserID(w, r)
+	if !ok {
+		return
+	}
 	termID := r.URL.Query().Get("id")
 	if termID == "" {
 		h.respond(w, http.StatusBadRequest, Response{Error: "id is required"})
 		return
 	}
 
-	if err := h.userUsecase.DeleteTerminology(r.Context(), termID); err != nil {
+	if err := h.userUsecase.DeleteTerminology(r.Context(), userID, termID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			h.respond(w, http.StatusNotFound, Response{Error: "Terminology not found"})
+			return
+		}
 		h.respond(w, http.StatusInternalServerError, Response{Error: "Failed to delete terminology"})
 		return
 	}
@@ -779,6 +787,23 @@ func (h *Handler) respond(w http.ResponseWriter, status int, data interface{}) {
 
 func contextWithUserID(ctx context.Context, userID string) context.Context {
 	return context.WithValue(ctx, UserIDKey, userID)
+}
+
+// sessionUserID returns the authenticated user's ID for a per-user handler.
+// The session alone decides whose data is read or written: a request without
+// one gets 401, and a legacy user_id query parameter naming anyone else gets
+// 403 (a matching one is accepted so older clients keep working).
+func sessionUserID(w http.ResponseWriter, r *http.Request) (string, bool) {
+	userID, ok := GetUserIDFromContext(r.Context())
+	if !ok {
+		Unauthorized(w, "Authorization required")
+		return "", false
+	}
+	if q := r.URL.Query().Get("user_id"); q != "" && q != userID {
+		WriteJSON(w, http.StatusForbidden, ErrorResponse{Success: false, Error: "user_id does not match the authenticated user"})
+		return "", false
+	}
+	return userID, true
 }
 
 // GetUserIDFromContext extracts the user ID AuthMiddleware stored. An empty

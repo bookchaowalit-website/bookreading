@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"log"
 	"time"
 
@@ -31,17 +32,27 @@ func NewNovelUpdateUseCase(
 	}
 }
 
-// SubscribeToNovel creates a new subscription for auto-updates
-func (uc *NovelUpdateUseCase) SubscribeToNovel(ctx context.Context, novelID, sourceURL, sourceType string, userID *string) (*domain.NovelSubscription, error) {
-	// Check if subscription already exists
-	existing, _ := uc.subRepo.GetByNovelID(novelID)
-	if existing != nil {
-		return existing, nil
+// SubscribeToNovel creates userID's subscription to a novel, or returns the
+// one userID already has (novel_subscriptions is UNIQUE(novel_id, user_id)).
+// Another user's subscription to the same novel is never returned.
+func (uc *NovelUpdateUseCase) SubscribeToNovel(ctx context.Context, novelID, sourceURL, sourceType, userID string) (*domain.NovelSubscription, error) {
+	if userID == "" {
+		return nil, errors.New("user_id is required")
+	}
+	existing, err := uc.subRepo.GetByUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range existing {
+		if existing[i].NovelID == novelID {
+			return &existing[i], nil
+		}
 	}
 
+	owner := userID
 	subscription := &domain.NovelSubscription{
 		NovelID:          novelID,
-		UserID:           userID,
+		UserID:           &owner,
 		SourceURL:        sourceURL,
 		SourceType:       sourceType,
 		LastChapterCount: 0,
@@ -56,8 +67,19 @@ func (uc *NovelUpdateUseCase) SubscribeToNovel(ctx context.Context, novelID, sou
 	return subscription, nil
 }
 
-// UnsubscribeFromNovel removes a subscription
-func (uc *NovelUpdateUseCase) UnsubscribeFromNovel(ctx context.Context, subscriptionID string) error {
+// UnsubscribeFromNovel removes userID's subscription. A missing subscription
+// or one owned by another user returns domain.ErrNotFound.
+func (uc *NovelUpdateUseCase) UnsubscribeFromNovel(ctx context.Context, userID, subscriptionID string) error {
+	if userID == "" {
+		return errors.New("user_id is required")
+	}
+	sub, err := uc.subRepo.GetByID(subscriptionID)
+	if err != nil {
+		return err
+	}
+	if sub == nil || sub.UserID == nil || *sub.UserID != userID {
+		return domain.ErrNotFound
+	}
 	return uc.subRepo.Delete(subscriptionID)
 }
 
