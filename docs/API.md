@@ -93,9 +93,10 @@ Content-Type: application/json
 GET /api/novels?page=1&limit=20
 ```
 
-**Scrape Novel:**
+**Scrape Novel (admin only):** adds to the shared catalog.
 ```http
 POST /api/novels
+Authorization: Bearer <admin token>   (or the auth_token session cookie)
 Content-Type: application/json
 
 {
@@ -128,18 +129,31 @@ GET /api/chapters/detail?id=chapter_id
 GET /api/chapters/by-number?novel_id=123&chapter_number=5
 ```
 
-**Translate Chapter:**
+**Translate Chapter (signed in):** runs the server-side translation once
+and caches it on the chapter. Sending `translated_text` saves that text over
+the shared chapter and requires the admin role (403 otherwise).
 ```http
-POST /api/chapters/translate
+POST /api/chapters/translate?id=chapter_id
 Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "novel_id": "123",
-  "chapter_number": 5,
-  "translator_type": "agentic"
+  "target_lang": "th",
+  "use_context": true
 }
 ```
+
+**Update Chapter (admin only):**
+```http
+POST /api/chapters/update?id=chapter_id
+Authorization: Bearer <admin token>
+Content-Type: application/json
+
+{ "original_content": "...", "is_scraped": true }
+```
+
+Access levels for every route are pinned by
+`backend/internal/delivery/http/routes_access_test.go`.
 
 ---
 

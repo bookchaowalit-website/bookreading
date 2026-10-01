@@ -4,7 +4,7 @@ Living backlog for improvement passes. Keep it short and actionable.
 
 ## Current state
 
-**Score: 8.8/10** (8.6 after pass 8, 8.3 after pass 7, 8 after pass 6, 7.5 after pass 3, 7 after pass 2, 6 after pass 1, 5
+**Score: 9.0/10** (8.8 after pass 9, 8.6 after pass 8, 8.3 after pass 7, 8 after pass 6, 7.5 after pass 3, 7 after pass 2, 6 after pass 1, 5
 originally). Billing uses configured Stripe Prices (validated at startup),
 round-trips through webhooks order-safely and follows portal plan switches. Three services build and their unit tests
 pass locally; backend is golangci-lint clean; CI now runs the real checks.
@@ -22,11 +22,10 @@ Local check commands:
 ## Backlog
 
 ### P0
-- Chapter writes are unauthenticated: `POST /api/chapters/update` and
-  `POST /api/chapters/translate` with `translated_text` overwrite any
-  chapter, and `POST /api/novels` (scrape) is open. The reader page uses
-  them, so require a session first (cookie is same-origin), then decide
-  who may overwrite shared chapter text (admin or a per-user copy).
+- Operator, before deploying pass 10: set `GRPC_SERVICE_TOKEN` wherever a
+  generated gRPC build runs with `NODE_ENV=production` (it refuses to start
+  without it), and make sure an admin account exists (`ADMIN_USER_IDS`):
+  adding novels and saving chapter text are now admin-only.
 - Operator, before deploying pass 9: replace `ADMIN_EMAILS` with
   `ADMIN_USER_IDS` (UUID from `GET /api/users/me`) or no admin is promoted.
 - Operator task before enabling billing: create recurring Prices
@@ -43,8 +42,14 @@ Local check commands:
   (repository SELECT lists must match), and make `init.sql` a dump of the
   migrated schema. `scripts/check-migrations.sh` + the DB tests catch
   regressions.
-- gRPC server (`delivery/grpc`, published on host port 9091) has no auth;
-  bind it to loopback/internal network or add a token interceptor.
+- gRPC is not started by `cmd/main.go` (no generated stubs). When it is
+  wired, build the server with `grpc.ServerAuthOptions(os.Getenv)` and add a
+  test that the generated server rejects calls without the token.
+- Product decision: readers' own translations are now local-only (only
+  admins persist chapter text). If readers should keep them across devices,
+  add a per-user translation table instead of reopening the shared write.
+- Docker compose still publishes Postgres `5432` and backend `8888` on all
+  interfaces; bind them to 127.0.0.1 unless a reverse proxy needs them.
 - Operator: set `AI_SERVICE_TOKEN` in the production `.env` now that the
   browser goes through `/api/ai` (backend and ai-service share it via
   `env_file`), then confirm `/api/ai/translate` works and a direct call to
@@ -71,7 +76,36 @@ Local check commands:
   warnings reported by `npm run lint`.
 - Consolidate the overlapping `ci.yml` and per-service workflows.
 
-## Done in this pass (pass 9: IDOR, admin bootstrap, migrations, admin UI)
+## Done in this pass (pass 10: route access levels, gRPC token)
+- P0 closed: `POST /api/novels` (server-side scrape of any URL into the
+  shared catalog) and `/api/chapters/update` are admin-only;
+  `/api/chapters/translate` needs a session, and saving caller-supplied
+  `translated_text` over the shared chapter needs admin (`requireAdmin`).
+  No per-user chapter copies exist, so shared writes are admin's.
+- Route audit: public reads (novels, chapters, translation history/cache,
+  health) answer 405 to other methods (`readOnly`); register, login,
+  logout and the Stripe webhook are POST-only (`postOnly`).
+  `routes_access_test.go` walks every pattern the real mux registers
+  (`routeMux` records them) and probes each method as anonymous / user /
+  admin: an unclassified route, a changed level, or an anonymous
+  state-changing method outside the 4-entry `publicWrites` list fails CI.
+  The AI proxy allow-list is walked the same way.
+- `AuthMiddleware` ignores `Bearer null`/`undefined`/empty placeholders and
+  falls back to the session cookie (pages sent `Bearer null` from an empty
+  localStorage, which 401'd even with a valid cookie).
+- gRPC: `delivery/grpc/auth.go` (no build tag) adds unary + stream
+  interceptors requiring `authorization: Bearer $GRPC_SERVICE_TOKEN`
+  (constant-time compare, fails startup in production when unset);
+  compose binds 9091 to 127.0.0.1.
+- Frontend: reader uses `authHeader()` (no `Bearer null`), shows "add novel
+  from URL" and persists chapter text only for admins; the chapters page
+  explains a 403 on a not-yet-added featured novel.
+- Verified: go vet, `go test -race ./...`, golangci-lint 0 issues; a
+  mutation check (unprotecting `/api/chapters/update`, adding an
+  unclassified route) fails the new tests; frontend tsc, vitest 69/69,
+  lint, `next build`.
+
+## Done in pass 9: IDOR, admin bootstrap, migrations, admin UI
 - P0 IDOR closed: `/api/subscriptions*`, `/api/reading-progress*`,
   `/api/bookmarks*` and `/api/feedback` took `user_id` from the query
   string. `sessionUserID` (handler.go) now decides; a mismatching `user_id`
