@@ -296,6 +296,10 @@ func NewServerWithDeps(deps *ServerDependencies, port string) *Server {
 	mux.HandleFunc("/api/payments/stripe/cancel", h.AuthMiddleware(paymentHandler.CancelSubscription))
 	mux.HandleFunc("/api/payments/subscription", h.AuthMiddleware(paymentHandler.GetSubscriptionStatus))
 
+	// ai-service proxy: the browser calls /api/ai/<allow-listed path> with its
+	// session; the backend forwards with AI_SERVICE_TOKEN via the aiservice client.
+	mux.Handle(AIProxyPrefix+"/", NewAIProxyHandler(deps.AIClient, h.AuthMiddleware))
+
 	// Health check (basic - just checks if server is running)
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

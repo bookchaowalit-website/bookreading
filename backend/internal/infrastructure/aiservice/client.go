@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -14,6 +15,9 @@ type AIServiceClient interface {
 	ScrapeNovel(ctx context.Context, url, sourceLang string) (*ScrapeNovelResponse, error)
 	TranslateContent(ctx context.Context, req *TranslateRequest) (*TranslateResponse, error)
 	ExtractTerminology(ctx context.Context, req *ExtractTerminologyRequest) (*ExtractTerminologyResponse, error)
+	// Forward relays a raw request to an ai-service path with the service
+	// token. The caller allow-lists path and closes the response body.
+	Forward(ctx context.Context, method, path, rawQuery, contentType string, body io.Reader) (*http.Response, error)
 }
 
 type aiServiceClient struct {
@@ -142,4 +146,29 @@ func (c *aiServiceClient) ExtractTerminology(ctx context.Context, req *ExtractTe
 	var result ExtractTerminologyResponse
 	err := c.postJSON(ctx, "/extract-terminology", "terminology extraction", req, &result)
 	return &result, err
+}
+
+// Forward relays method/path to ai-service with the service token. It does
+// not validate path: the HTTP proxy handler allow-lists it first. Callers
+// must close the returned response body.
+func (c *aiServiceClient) Forward(ctx context.Context, method, path, rawQuery, contentType string, body io.Reader) (*http.Response, error) {
+	if !strings.HasPrefix(path, "/") {
+		return nil, fmt.Errorf("ai-service forward: path must start with /")
+	}
+	target := c.baseURL + path
+	if rawQuery != "" {
+		target += "?" + rawQuery
+	}
+	req, err := http.NewRequestWithContext(ctx, method, target, body)
+	if err != nil {
+		return nil, err
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	req.Header.Set("Accept", "application/json")
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	return c.client.Do(req)
 }

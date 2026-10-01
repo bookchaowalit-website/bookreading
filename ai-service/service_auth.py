@@ -5,9 +5,9 @@ health routes in :data:`PUBLIC_PATHS` requires ``Authorization: Bearer <token>``
 The comparison is constant-time. When the variable is unset (local dev), the
 service stays open, as before.
 
-Note: the Next.js frontend also calls some routes directly from the browser.
-Do not ship the token to the browser; enable it once those calls go through
-the backend or an authenticating proxy (see docs/UPGRADE-PLAN.md).
+The Next.js frontend reaches this service only through the Go backend's
+session-checked ``/api/ai/*`` proxy, which adds the token server-side. Never
+ship the token to the browser.
 """
 
 from __future__ import annotations

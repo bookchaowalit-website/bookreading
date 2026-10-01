@@ -51,6 +51,11 @@ a real bug found by wiring up a test runner that had never been connected
                               └─────────────┘
 ```
 
+The browser only talks to the backend. AI calls (scrape, translate, manga,
+review queue) go to `/api/ai/*` on the backend, which checks the user's
+session and forwards to ai-service with the server-side `AI_SERVICE_TOKEN`.
+ai-service still applies its own SSRF guard to every URL it fetches.
+
 ### Tech Stack
 | Component | Technology |
 |-----------|------------|

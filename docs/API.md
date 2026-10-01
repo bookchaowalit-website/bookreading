@@ -244,7 +244,16 @@ resp, err := client.ListNovels(context.Background(), &pb.ListNovelsRequest{
 ## AI Service API
 
 ### Base URL
-- Development: `http://localhost:8000`
+- Browser / frontend: `{BACKEND_URL}/api/ai` (for example
+  `POST /api/ai/translate`). The backend requires a logged-in session
+  (`auth_token` cookie or `Authorization: Bearer <jwt>`), then forwards to
+  ai-service with `Authorization: Bearer $AI_SERVICE_TOKEN`. Only the paths the frontend
+  uses are allow-listed (`aiProxyRoutes` in
+  `backend/internal/delivery/http/ai_proxy_handler.go`); others return 404.
+  Request bodies are capped at 2 MiB (32 MiB for manga image routes). The
+  manga health/supported-* metadata routes are public.
+- Service-to-service only: `http://ai-service:8000` (development:
+  `http://localhost:8000`, loopback-bound). Not for browsers.
 
 ### Endpoints
 

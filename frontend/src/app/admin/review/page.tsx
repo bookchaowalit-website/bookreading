@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
+import { aiReviewApi } from '@/lib/api';
 import {
   CheckCircle2, XCircle, FileText, Search, BarChart3, AlertTriangle,
   Lightbulb, BookOpen, Library, Target, Moon, Sun, RefreshCw,
@@ -42,7 +43,6 @@ interface Toast {
   type: 'success' | 'error' | 'info';
 }
 
-const API_URL = process.env.NEXT_PUBLIC_AI_SERVICE_URL || 'http://localhost:8000';
 
 export default function ReviewQueuePage() {
   const [items, setItems] = useState<ReviewItem[]>([]);
@@ -116,8 +116,7 @@ export default function ReviewQueuePage() {
 
   const fetchItems = async () => {
     try {
-      const response = await fetch(`${API_URL}/review/pending?limit=100`);
-      const data = await response.json();
+      const data = await aiReviewApi.getPending(100);
 
       let filteredItems = data.items || [];
       if (filter === 'high') {
@@ -147,9 +146,7 @@ export default function ReviewQueuePage() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch(`${API_URL}/review/stats`);
-      const data = await response.json();
-      setStats(data);
+      setStats(await aiReviewApi.getStats());
     } catch (error) {
       console.error('Failed to fetch stats:', error);
     }
@@ -158,23 +155,14 @@ export default function ReviewQueuePage() {
   const handleApprove = async (itemId: string) => {
     setActionLoading(itemId);
     try {
-      const response = await fetch(`${API_URL}/review/approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id: itemId, reviewer: 'admin' }),
-      });
-
-      if (response.ok) {
-        setItems(items.filter(i => i.id !== itemId));
-        setSelectedItem(null);
-        fetchStats();
-        showToast('อนุมัติเรียบร้อยแล้ว', 'success');
-      } else {
-        showToast('ไม่สามารถอนุมัติได้', 'error');
-      }
+      await aiReviewApi.approve(itemId);
+      setItems(items.filter(i => i.id !== itemId));
+      setSelectedItem(null);
+      fetchStats();
+      showToast('อนุมัติเรียบร้อยแล้ว', 'success');
     } catch (error) {
       console.error('Failed to approve:', error);
-      showToast('เกิดข้อผิดพลาด', 'error');
+      showToast('ไม่สามารถอนุมัติได้', 'error');
     } finally {
       setActionLoading(null);
       setConfirmModal({ action: null, itemId: null });
@@ -189,24 +177,15 @@ export default function ReviewQueuePage() {
 
     setActionLoading(itemId);
     try {
-      const response = await fetch(`${API_URL}/review/edit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id: itemId, edited_text: editedText, reviewer: 'admin' }),
-      });
-
-      if (response.ok) {
-        setItems(items.filter(i => i.id !== itemId));
-        setSelectedItem(null);
-        setEditedText('');
-        fetchStats();
-        showToast('แก้ไขและอนุมัติเรียบร้อยแล้ว', 'success');
-      } else {
-        showToast('ไม่สามารถบันทึกได้', 'error');
-      }
+      await aiReviewApi.edit(itemId, editedText);
+      setItems(items.filter(i => i.id !== itemId));
+      setSelectedItem(null);
+      setEditedText('');
+      fetchStats();
+      showToast('แก้ไขและอนุมัติเรียบร้อยแล้ว', 'success');
     } catch (error) {
       console.error('Failed to edit:', error);
-      showToast('เกิดข้อผิดพลาด', 'error');
+      showToast('ไม่สามารถบันทึกได้', 'error');
     } finally {
       setActionLoading(null);
     }
@@ -215,24 +194,15 @@ export default function ReviewQueuePage() {
   const handleReject = async (itemId: string, notes: string) => {
     setActionLoading(itemId);
     try {
-      const response = await fetch(`${API_URL}/review/reject`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id: itemId, reviewer: 'admin', notes }),
-      });
-
-      if (response.ok) {
-        setItems(items.filter(i => i.id !== itemId));
-        setSelectedItem(null);
-        setRejectNotes('');
-        fetchStats();
-        showToast('ปฏิเสธแล้ว จะแปลใหม่', 'info');
-      } else {
-        showToast('ไม่สามารถปฏิเสธได้', 'error');
-      }
+      await aiReviewApi.reject(itemId, notes);
+      setItems(items.filter(i => i.id !== itemId));
+      setSelectedItem(null);
+      setRejectNotes('');
+      fetchStats();
+      showToast('ปฏิเสธแล้ว จะแปลใหม่', 'info');
     } catch (error) {
       console.error('Failed to reject:', error);
-      showToast('เกิดข้อผิดพลาด', 'error');
+      showToast('ไม่สามารถปฏิเสธได้', 'error');
     } finally {
       setActionLoading(null);
       setConfirmModal({ action: null, itemId: null });

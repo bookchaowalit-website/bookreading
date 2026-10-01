@@ -4,7 +4,7 @@ Living backlog for improvement passes. Keep it short and actionable.
 
 ## Current state
 
-**Score: 8/10** (7.5 after pass 3, 7 after pass 2, 6 after pass 1, 5
+**Score: 8.3/10** (8 after pass 6, 7.5 after pass 3, 7 after pass 2, 6 after pass 1, 5
 originally). Billing uses configured Stripe Prices (validated at startup),
 round-trips through webhooks order-safely and follows portal plan switches. Three services build and their unit tests
 pass locally; backend is golangci-lint clean; CI now runs the real checks.
@@ -27,10 +27,16 @@ Local check commands:
   switching between them in the Stripe billing-portal configuration.
 
 ### P1
-- Frontend calls ai-service straight from the browser (`frontend/src/lib/api.ts`,
-  `admin/review/page.tsx`), so `AI_SERVICE_TOKEN` cannot be enabled without
-  breaking them. Proxy those calls through the Go backend (which already
-  sends the token), then turn the token on in production.
+- Operator: set `AI_SERVICE_TOKEN` in the production `.env` now that the
+  browser goes through `/api/ai` (backend and ai-service share it via
+  `env_file`), then confirm `/api/ai/translate` works and a direct call to
+  ai-service without the token gets 401.
+- `/api/ai/review/*` (approve/edit/reject) only needs a logged-in user; there
+  is no admin role yet. Add a role/allow-list check before opening sign-ups.
+- Expensive `/api/ai` POSTs (translate, manga) only get the global rate
+  limit; consider a per-user quota tied to the subscription plan.
+- The backend `http.Server` has no Read/Write/Idle timeouts; add them
+  (WriteTimeout must exceed the 5 min ai-service client timeout).
 - ai-service: Webtoons Playwright path resolves DNS inside Chromium; only
   navigations are held to the allow-list. Consider dropping the browser path
   or routing it through a pinned proxy.
@@ -49,7 +55,28 @@ Local check commands:
   warnings reported by `npm run lint`.
 - Consolidate the overlapping `ci.yml` and per-service workflows.
 
-## Done in this pass (pass 6: SSRF follow-ups + service auth)
+## Done in this pass (pass 7: ai-service behind the backend, P1 closed)
+- P1 "frontend calls ai-service from the browser" done: new
+  `backend/internal/delivery/http/ai_proxy_handler.go` serves `/api/ai/*`
+  behind `Handler.AuthMiddleware` (cookie or bearer JWT) and forwards via the
+  aiservice client's new `Forward`, which adds `AI_SERVICE_TOKEN`. Exact path
+  allow-list (+ `/terminology/{id}` as `[A-Za-z0-9_-]`), method check,
+  escapes/dot segments/`//` rejected, 2 MiB body cap (32 MiB for manga
+  images), user credentials and upstream `Set-Cookie` never forwarded, an
+  upstream 401/403 surfaces as 502 so users are not logged out. ai-service
+  keeps its SSRF guard; manga health/supported-* stay public.
+- Frontend: `aiApi` uses the backend client at `/api/ai`, new `aiReviewApi`
+  replaces the review page's direct `fetch`es; `NEXT_PUBLIC_AI_SERVICE_URL`
+  is gone (compose, Dockerfile, CI). `NEXT_PUBLIC_AI_DIRECT_URL` is a
+  local-only bypass used by `scripts/read-local.sh` (no Go backend).
+  `.env.example`, `docker-compose.yml`, README and `docs/API.md` updated.
+- Tests: 6 Go handler tests (unauthenticated -> 401 with no upstream call;
+  upstream gets the service token, not the user's JWT/cookie; traversal and
+  unlisted paths; method/body limits; public metadata; upstream down) and 6
+  vitest cases. go vet, `go test -race`, golangci-lint (0 issues), vitest 64,
+  tsc, `next build`, ai-service pytest 195 green.
+
+## Done in pass 6: SSRF follow-ups + service auth
 - `/manga/fetch` and `/manga/translate-url` fetch only through
   `url_safety.safe_get`: chapter pages/site APIs are held to
   `site_routing.SUPPORTED_MANGA_DOMAINS` (+ `MANGA_EXTRA_ALLOWED_HOSTS`);

@@ -1,6 +1,5 @@
 import axios from 'axios';
 
-const AI_SERVICE_URL = process.env.NEXT_PUBLIC_AI_SERVICE_URL || 'http://localhost:8000';
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
 
 // Create axios instance with cookie-based auth
@@ -9,6 +8,15 @@ const apiClient = axios.create({
   baseURL: BACKEND_URL,
   withCredentials: true, // Important: send cookies with requests
 });
+
+// ai-service is reached through the backend (`/api/ai/*`), which checks the
+// user's session and adds the server-side AI_SERVICE_TOKEN; the browser never
+// holds that token. NEXT_PUBLIC_AI_DIRECT_URL is a local-only escape hatch
+// (scripts/read-local.sh, no Go backend, ai-service without a token). Never
+// set it in a deployed build.
+const AI_DIRECT_URL = process.env.NEXT_PUBLIC_AI_DIRECT_URL || '';
+export const AI_PROXY_PATH = AI_DIRECT_URL ? '' : '/api/ai';
+const aiClient = AI_DIRECT_URL ? axios.create({ baseURL: AI_DIRECT_URL }) : apiClient;
 
 // Fallback to localStorage token if no cookie (for development)
 if (typeof window !== 'undefined') {
@@ -287,7 +295,7 @@ export const translationApi = {
 export const aiApi = {
   // Scrape novel/chapter from URL
   async scrapeNovel(url: string, sourceLang = 'zh'): Promise<ScrapeResponse> {
-    const response = await axios.post(`${AI_SERVICE_URL}/scrape`, {
+    const response = await aiClient.post(`${AI_PROXY_PATH}/scrape`, {
       url,
       source_lang: sourceLang,
     });
@@ -296,7 +304,7 @@ export const aiApi = {
 
   // Fetch single chapter content on-demand
   async fetchChapterContent(url: string): Promise<{ content: string; chapter_number: number; title: string }> {
-    const response = await axios.post(`${AI_SERVICE_URL}/chapter`, {
+    const response = await aiClient.post(`${AI_PROXY_PATH}/chapter`, {
       url,
     });
     return response.data;
@@ -308,7 +316,7 @@ export const aiApi = {
     sourceLang = 'zh',
     targetLang = 'th'
   ): Promise<{ translated_text: string; model_used: string }> {
-    const response = await axios.post(`${AI_SERVICE_URL}/translate`, {
+    const response = await aiClient.post(`${AI_PROXY_PATH}/translate`, {
       text,
       source_lang: sourceLang,
       target_lang: targetLang,
@@ -322,7 +330,7 @@ export const aiApi = {
     sourceLang = 'zh',
     targetLang = 'th'
   ): Promise<ExtractedTerm[]> {
-    const response = await axios.post(`${AI_SERVICE_URL}/extract-terminology`, {
+    const response = await aiClient.post(`${AI_PROXY_PATH}/extract-terminology`, {
       text,
       source_lang: sourceLang,
       target_lang: targetLang,
@@ -332,7 +340,7 @@ export const aiApi = {
 
   // Get pre-defined terminology
   async getKnownTerminology(): Promise<{ novel: string; terminology: ExtractedTerm[] }> {
-    const response = await axios.get(`${AI_SERVICE_URL}/terminology/known`);
+    const response = await aiClient.get(`${AI_PROXY_PATH}/terminology/known`);
     return response.data;
   },
 
@@ -370,7 +378,7 @@ export const aiApi = {
     issues?: string[];
     strengths?: string[];
   }> {
-    const response = await axios.post(`${AI_SERVICE_URL}/translate/agentic`, {
+    const response = await aiClient.post(`${AI_PROXY_PATH}/translate/agentic`, {
       text,
       source_lang: 'zh',
       target_lang: 'th',
@@ -405,7 +413,7 @@ export const aiApi = {
       pronounStyle?: string;
     } = {}
   ): Promise<{ success: boolean; novel_id: string }> {
-    const response = await axios.post(`${AI_SERVICE_URL}/context/initialize`, {
+    const response = await aiClient.post(`${AI_PROXY_PATH}/context/initialize`, {
       novel_id: novelId,
       novel_title: novelTitle,
       novel_title_th: novelTitleTh,
@@ -426,7 +434,7 @@ export const aiApi = {
     translatedText: string,
     keyEvents?: string[]
   ): Promise<{ success: boolean; chapter_number: number }> {
-    const response = await axios.post(`${AI_SERVICE_URL}/context/add-chapter`, {
+    const response = await aiClient.post(`${AI_PROXY_PATH}/context/add-chapter`, {
       novel_id: novelId,
       chapter_number: chapterNumber,
       chapter_title: chapterTitle,
@@ -442,7 +450,7 @@ export const aiApi = {
     novel_id: string;
     terms: { original: string; translation: string; type: string; description: string }[];
   }> {
-    const response = await axios.get(`${AI_SERVICE_URL}/terminology/${novelId}`);
+    const response = await aiClient.get(`${AI_PROXY_PATH}/terminology/${encodeURIComponent(novelId)}`);
     return response.data;
   },
 };
@@ -510,7 +518,7 @@ export const mangaApi = {
       geminiApiKey?: string;
     } = {}
   ): Promise<MangaTranslateResponse> {
-    const response = await axios.post(`${AI_SERVICE_URL}/manga/translate`, {
+    const response = await aiClient.post(`${AI_PROXY_PATH}/manga/translate`, {
       image_base64: imageBase64,
       source_lang: options.sourceLang || 'ko',
       target_lang: options.targetLang || 'th',
@@ -533,7 +541,7 @@ export const mangaApi = {
     imageBase64: string,
     sourceLang: string = 'ko'
   ): Promise<MangaExtractTextResponse> {
-    const response = await axios.post(`${AI_SERVICE_URL}/manga/extract-text`, {
+    const response = await aiClient.post(`${AI_PROXY_PATH}/manga/extract-text`, {
       image_base64: imageBase64,
       source_lang: sourceLang,
     });
@@ -558,7 +566,7 @@ export const mangaApi = {
       geminiApiKey?: string;
     } = {}
   ): Promise<MangaBatchTranslateResponse> {
-    const response = await axios.post(`${AI_SERVICE_URL}/manga/batch-translate`, {
+    const response = await aiClient.post(`${AI_PROXY_PATH}/manga/batch-translate`, {
       images,
       source_lang: options.sourceLang || 'ko',
       target_lang: options.targetLang || 'th',
@@ -588,7 +596,7 @@ export const mangaApi = {
     source_url: string;
     site_name: string;
   }> {
-    const response = await axios.post(`${AI_SERVICE_URL}/manga/fetch`, {
+    const response = await aiClient.post(`${AI_PROXY_PATH}/manga/fetch`, {
       url,
       source_lang: sourceLang,
     });
@@ -622,7 +630,7 @@ export const mangaApi = {
       error?: string;
     }[];
   }> {
-    const response = await axios.post(`${AI_SERVICE_URL}/manga/translate-url`, {
+    const response = await aiClient.post(`${AI_PROXY_PATH}/manga/translate-url`, {
       url,
       source_lang: options.sourceLang || 'ko',
       render_style: options.renderStyle || 'overlay',
@@ -642,7 +650,7 @@ export const mangaApi = {
     target_languages: SupportedLanguage[];
     render_styles: SupportedRenderStyle[];
   }> {
-    const response = await axios.get(`${AI_SERVICE_URL}/manga/supported-languages`);
+    const response = await aiClient.get(`${AI_PROXY_PATH}/manga/supported-languages`);
     return response.data;
   },
 
@@ -655,7 +663,7 @@ export const mangaApi = {
       notes: string;
     }[];
   }> {
-    const response = await axios.get(`${AI_SERVICE_URL}/manga/supported-sites`);
+    const response = await aiClient.get(`${AI_PROXY_PATH}/manga/supported-sites`);
     return response.data;
   },
 
@@ -672,7 +680,7 @@ export const mangaApi = {
       batch: boolean;
     };
   }> {
-    const response = await axios.get(`${AI_SERVICE_URL}/manga/health`);
+    const response = await aiClient.get(`${AI_PROXY_PATH}/manga/health`);
     return response.data;
   },
 };
@@ -705,3 +713,35 @@ export const api = {
 };
 
 export default api;
+
+// Translation review queue (admin/review), proxied through the backend.
+export const aiReviewApi = {
+  async getPending(limit = 100) {
+    const response = await aiClient.get(`${AI_PROXY_PATH}/review/pending`, { params: { limit } });
+    return response.data;
+  },
+
+  async getStats() {
+    const response = await aiClient.get(`${AI_PROXY_PATH}/review/stats`);
+    return response.data;
+  },
+
+  async approve(itemId: string, reviewer = 'admin') {
+    const response = await aiClient.post(`${AI_PROXY_PATH}/review/approve`, { item_id: itemId, reviewer });
+    return response.data;
+  },
+
+  async edit(itemId: string, editedText: string, reviewer = 'admin') {
+    const response = await aiClient.post(`${AI_PROXY_PATH}/review/edit`, {
+      item_id: itemId,
+      edited_text: editedText,
+      reviewer,
+    });
+    return response.data;
+  },
+
+  async reject(itemId: string, notes: string, reviewer = 'admin') {
+    const response = await aiClient.post(`${AI_PROXY_PATH}/review/reject`, { item_id: itemId, reviewer, notes });
+    return response.data;
+  },
+};

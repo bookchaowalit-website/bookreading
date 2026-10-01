@@ -58,9 +58,10 @@ services:
       dockerfile: Dockerfile
     container_name: bookreading-ai-service
     ports:
-      # Loopback-only by default. Auth is opt-in via AI_SERVICE_TOKEN in .env
-      # (shared with the backend through env_file); set AI_SERVICE_BIND=0.0.0.0
-      # only with that token or an authenticating proxy in front.
+      # The browser never calls ai-service: the frontend goes through the
+      # backend's /api/ai proxy, which adds AI_SERVICE_TOKEN (shared through
+      # env_file). This port is for local debugging only and stays on loopback;
+      # set AI_SERVICE_TOKEN in production.
       - "${AI_SERVICE_BIND:-127.0.0.1}:8000:8000"
     env_file:
       - .env
@@ -86,18 +87,15 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_AI_SERVICE_URL: http://localhost:8000
         NEXT_PUBLIC_BACKEND_URL: http://localhost:8888
     container_name: bookreading-frontend
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_AI_SERVICE_URL: http://localhost:8000
       NEXT_PUBLIC_BACKEND_URL: http://localhost:8888
       BACKEND_URL: http://backend:8080
     depends_on:
       - backend
-      - ai-service
     networks:
       - bookreading-network
     healthcheck:

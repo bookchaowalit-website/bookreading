@@ -13,10 +13,8 @@ FROM base AS builder
 WORKDIR /app
 
 # Build arguments for environment variables
-ARG NEXT_PUBLIC_AI_SERVICE_URL
 ARG NEXT_PUBLIC_BACKEND_URL
 
-ENV NEXT_PUBLIC_AI_SERVICE_URL=$NEXT_PUBLIC_AI_SERVICE_URL
 ENV NEXT_PUBLIC_BACKEND_URL=$NEXT_PUBLIC_BACKEND_URL
 
 COPY --from=deps /app/node_modules ./node_modules
