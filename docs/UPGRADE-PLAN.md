@@ -75,8 +75,28 @@ Local check commands:
 - Replace `<img>` with `next/image` and fix the `react-hooks/exhaustive-deps`
   warnings reported by `npm run lint`.
 - Consolidate the overlapping `ci.yml` and per-service workflows.
+- 008 down drops `stripe_event_at` and 009 down drops `role`, which
+  init.sql also creates: rolling an init.sql database back past them loses
+  webhook ordering and admin grants. Decide whether they should follow the
+  007/010 rule (down never drops init.sql columns) and extend the
+  `check-migrations.sh` rollback phase accordingly.
 
-## Done in this pass (pass 10: route access levels, gRPC token)
+## Done in this pass (pass 11: safe migration rollbacks)
+- `007` down dropped `stripe_customer_id` / `stripe_subscription_id`, which
+  databases built from `database/init.sql` had before 007 existed: a
+  rollback destroyed the billing link to Stripe. It now drops only its
+  index. `010` down (dropped `avatar_url` / `subscription_*`, set
+  `name NOT NULL`, converted timestamps to `TIMESTAMP`) is now a documented
+  no-op for the same reason; on migrations-only databases those columns go
+  with the users table in 001 down.
+- `scripts/check-migrations.sh` gained a phase that builds init.sql in a
+  separate schema, inserts a billed user, applies the 010..007 downs and
+  fails if any init.sql column, its data, the `TIMESTAMPTZ` type or the
+  nullable `name` changed (fails on the old 007/010). The migration-built
+  public schema is left untouched for the DB-backed Go tests. Verified on
+  local Postgres 16, plus `go test -race` against the migrated database.
+
+## Done in pass 10: route access levels, gRPC token
 - P0 closed: `POST /api/novels` (server-side scrape of any URL into the
   shared catalog) and `/api/chapters/update` are admin-only;
   `/api/chapters/translate` needs a session, and saving caller-supplied
