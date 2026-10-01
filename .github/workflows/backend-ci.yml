@@ -5,10 +5,14 @@ on:
     branches: [main, develop]
     paths:
       - 'backend/**'
+      - 'database/**'
+      - 'scripts/check-migrations.sh'
   pull_request:
     branches: [main]
     paths:
       - 'backend/**'
+      - 'database/**'
+      - 'scripts/check-migrations.sh'
 
 jobs:
   lint:
@@ -65,11 +69,17 @@ jobs:
         run: go mod download
         working-directory: backend
 
+      # Builds the schema from migrations alone (up, down, up); the
+      # repository tests below then run against it.
+      - name: Check migration chain
+        run: scripts/check-migrations.sh "postgres://bookreading:testpassword@localhost:5432/bookreading_test?sslmode=disable"
+
       - name: Run tests
         run: go test -v -race -coverprofile=coverage.out ./...
         working-directory: backend
         env:
           DATABASE_URL: postgres://bookreading:testpassword@localhost:5432/bookreading_test?sslmode=disable
+          BOOKREADING_TEST_DATABASE_URL: postgres://bookreading:testpassword@localhost:5432/bookreading_test?sslmode=disable
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4.6.0

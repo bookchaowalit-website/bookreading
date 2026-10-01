@@ -124,7 +124,6 @@ CREATE TABLE user_progress (
 );
 
 -- Indexes for performance
-CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_stripe_subscription_id ON users(stripe_subscription_id);
 CREATE INDEX idx_user_library_user ON user_library(user_id);
 CREATE INDEX idx_user_library_novel ON user_library(novel_id);
