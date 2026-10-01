@@ -9,6 +9,7 @@ import SubscribeButton from '@/components/SubscribeButton';
 import Skeleton from '@/components/Skeleton';
 import { useNovelSubscriptions, useNovelSubscriptionStatus } from '@/hooks/useSubscriptions';
 import { Library, BookOpen, Rocket, Loader2 } from 'lucide-react';
+import { parsePageJump } from '@/lib/readingStats';
 
 interface ChapterWithStatus extends Chapter {
   is_loaded: boolean;
@@ -94,7 +95,12 @@ export default function ChaptersPage() {
       setNovelFromDb(novelData);
 
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to load chapters. Please try again.');
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        // Adding a novel to the shared catalog is admin-only on the backend.
+        setError('นิยายเรื่องนี้ยังไม่ถูกเพิ่มเข้าระบบ ผู้ดูแลระบบต้องเพิ่มก่อนจึงจะอ่านได้');
+      } else {
+        setError(err.response?.data?.error || 'Failed to load chapters. Please try again.');
+      }
     } finally {
       setIsLoading(false);
       setIsScraping(false);
@@ -104,6 +110,16 @@ export default function ChaptersPage() {
   const goToPage = (page: number) => {
     if (!novelFromDb || page < 1 || page > totalPages) return;
     loadChaptersFromDatabase(novelFromDb.id, selectedNovel!, page);
+  };
+
+  const goToPageInput = (raw: string) => {
+    const page = parsePageJump(raw, totalPages);
+    if (page !== null) goToPage(page);
+  };
+
+  const goToChapterInput = (raw: string) => {
+    const chapterNum = parsePageJump(raw, totalChapters);
+    if (chapterNum !== null) goToChapter(chapterNum);
   };
 
   const goToChapter = (chapterNum: number) => {
@@ -359,14 +375,14 @@ export default function ChaptersPage() {
                     onChange={(e) => setJumpToChapter(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
-                        goToChapter(parseInt(jumpToChapter));
+                        goToChapterInput(jumpToChapter);
                       }
                     }}
                     placeholder="1-2151"
                     className="w-24 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-800 dark:text-white"
                   />
                   <button
-                    onClick={() => goToChapter(parseInt(jumpToChapter))}
+                    onClick={() => goToChapterInput(jumpToChapter)}
                     disabled={!jumpToChapter}
                     className="px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
                   >
@@ -423,7 +439,7 @@ export default function ChaptersPage() {
                     onChange={(e) => setJumpToPage(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
-                        goToPage(parseInt(jumpToPage));
+                        goToPageInput(jumpToPage);
                         setJumpToPage('');
                       }
                     }}

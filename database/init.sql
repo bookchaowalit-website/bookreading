@@ -12,8 +12,10 @@ CREATE TABLE users (
     avatar_url VARCHAR(500),
     subscription_plan VARCHAR(50) DEFAULT 'free', -- free, pro, team
     subscription_status VARCHAR(50) DEFAULT 'active',
+    role VARCHAR(20) NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
     stripe_customer_id VARCHAR(255),
     stripe_subscription_id VARCHAR(255),
+    stripe_event_at TIMESTAMPTZ,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -122,7 +124,7 @@ CREATE TABLE user_progress (
 );
 
 -- Indexes for performance
-CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_stripe_subscription_id ON users(stripe_subscription_id);
 CREATE INDEX idx_user_library_user ON user_library(user_id);
 CREATE INDEX idx_user_library_novel ON user_library(novel_id);
 CREATE INDEX idx_user_terminology_user ON user_terminology(user_id);

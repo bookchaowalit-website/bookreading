@@ -7,7 +7,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: bookreading
     ports:
-      - "5432:5432"
+      # Loopback only: the backend and ai-service reach postgres:5432 on the
+      # compose network. Set POSTGRES_BIND=0.0.0.0 to expose it deliberately.
+      - "${POSTGRES_BIND:-127.0.0.1}:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -25,8 +27,12 @@ services:
       dockerfile: Dockerfile
     container_name: bookreading-backend
     ports:
-      - "9091:9090"
-      - "8888:8080"
+      # gRPC: loopback only. Callers must also send
+      # "authorization: Bearer $GRPC_SERVICE_TOKEN" (required when NODE_ENV=production).
+      - "127.0.0.1:9091:9090"
+      # HTTP API: loopback by default (the browser calls localhost:8888 and the
+      # frontend container uses backend:8080). BACKEND_BIND=0.0.0.0 exposes it.
+      - "${BACKEND_BIND:-127.0.0.1}:8888:8080"
     env_file:
       - .env
     environment:
@@ -37,6 +43,9 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      STRIPE_PRICE_PRO: ${STRIPE_PRICE_PRO:-}
+      STRIPE_PRICE_TEAM: ${STRIPE_PRICE_TEAM:-}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       STRIPE_BILLING_PORTAL_RETURN_URL: ${STRIPE_BILLING_PORTAL_RETURN_URL:-http://localhost:3000/app/settings}
     depends_on:
       postgres:
@@ -55,7 +64,11 @@ services:
       dockerfile: Dockerfile
     container_name: bookreading-ai-service
     ports:
-      - "8000:8000"
+      # The browser never calls ai-service: the frontend goes through the
+      # backend's /api/ai proxy, which adds AI_SERVICE_TOKEN (shared through
+      # env_file). This port is for local debugging only and stays on loopback;
+      # set AI_SERVICE_TOKEN in production.
+      - "${AI_SERVICE_BIND:-127.0.0.1}:8000:8000"
     env_file:
       - .env
     environment:
@@ -80,18 +93,15 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_AI_SERVICE_URL: http://localhost:8000
         NEXT_PUBLIC_BACKEND_URL: http://localhost:8888
     container_name: bookreading-frontend
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_AI_SERVICE_URL: http://localhost:8000
       NEXT_PUBLIC_BACKEND_URL: http://localhost:8888
       BACKEND_URL: http://backend:8080
     depends_on:
       - backend
-      - ai-service
     networks:
       - bookreading-network
     healthcheck:

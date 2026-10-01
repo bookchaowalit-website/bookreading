@@ -5,8 +5,7 @@ Handles PostgreSQL persistence for review queue, quality scores, and pipeline re
 
 import os
 import json
-import asyncio
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 from datetime import datetime
 from dataclasses import dataclass
 
@@ -407,7 +406,7 @@ class DatabaseManager:
             if key in result and isinstance(result[key], str):
                 try:
                     result[key] = json.loads(result[key])
-                except:
+                except Exception:
                     pass
         
         # Convert datetime to ISO format

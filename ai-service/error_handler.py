@@ -48,7 +48,6 @@ class DatabaseError(AIServiceError):
 def handle_api_error(func):
     """Decorator to handle common API errors and return appropriate HTTP responses."""
     from functools import wraps
-    from fastapi import HTTPException
     
     @wraps(func)
     async def wrapper(*args, **kwargs):
@@ -65,7 +64,7 @@ def handle_api_error(func):
                     "details": e.details if e.details else None,
                 }
             )
-        except Exception as e:
+        except Exception:
             # Log the full traceback in production
             raise HTTPException(
                 status_code=500,

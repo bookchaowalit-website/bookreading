@@ -2,7 +2,9 @@ package http
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -17,9 +19,15 @@ import (
 // Email format validation regex
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 
-type contextKey string
+// ctxKey is the private type for request-context keys; a plain string key
+// would never match (context.Value compares key type and value).
+type ctxKey string
 
-const UserIDKey contextKey = "user_id"
+// UserIDKey holds the authenticated user ID set by AuthMiddleware.
+const UserIDKey ctxKey = "userID"
+
+// claimsKey holds the validated *usecase.Claims set by AuthMiddleware.
+const claimsKey ctxKey = "claims"
 
 type Handler struct {
 	userUsecase                *usecase.UserUsecase
@@ -133,7 +141,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 // Refresh rotates the token to extend the session
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
-	claims, ok := r.Context().Value("claims").(*usecase.Claims)
+	claims, ok := r.Context().Value(claimsKey).(*usecase.Claims)
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Invalid session"})
 		return
@@ -192,7 +200,7 @@ func (h *Handler) clearAuthCookie(w http.ResponseWriter) {
 }
 
 func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Unauthorized"})
 		return
@@ -208,7 +216,7 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Unauthorized"})
 		return
@@ -245,7 +253,7 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Unauthorized"})
 		return
@@ -262,7 +270,7 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 // Library handlers
 
 func (h *Handler) GetLibrary(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Unauthorized"})
 		return
@@ -278,7 +286,7 @@ func (h *Handler) GetLibrary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AddToLibrary(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Unauthorized"})
 		return
@@ -301,7 +309,7 @@ func (h *Handler) AddToLibrary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) RemoveFromLibrary(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Unauthorized"})
 		return
@@ -324,7 +332,7 @@ func (h *Handler) RemoveFromLibrary(w http.ResponseWriter, r *http.Request) {
 // Terminology handlers
 
 func (h *Handler) GetTerminology(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Unauthorized"})
 		return
@@ -340,7 +348,7 @@ func (h *Handler) GetTerminology(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AddTerminology(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(string)
+	userID, ok := GetUserIDFromContext(r.Context())
 	if !ok {
 		h.respond(w, http.StatusUnauthorized, Response{Error: "Unauthorized"})
 		return
@@ -362,13 +370,21 @@ func (h *Handler) AddTerminology(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteTerminology(w http.ResponseWriter, r *http.Request) {
+	userID, ok := sessionUserID(w, r)
+	if !ok {
+		return
+	}
 	termID := r.URL.Query().Get("id")
 	if termID == "" {
 		h.respond(w, http.StatusBadRequest, Response{Error: "id is required"})
 		return
 	}
 
-	if err := h.userUsecase.DeleteTerminology(r.Context(), termID); err != nil {
+	if err := h.userUsecase.DeleteTerminology(r.Context(), userID, termID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			h.respond(w, http.StatusNotFound, Response{Error: "Terminology not found"})
+			return
+		}
 		h.respond(w, http.StatusInternalServerError, Response{Error: "Failed to delete terminology"})
 		return
 	}
@@ -598,8 +614,12 @@ func (h *Handler) TranslateChapter(w http.ResponseWriter, r *http.Request) {
 		input.TargetLang = "th"
 	}
 
-	// If translated_text is provided, save it directly (from frontend translation)
+	// If translated_text is provided, save it directly (from frontend translation).
+	// It overwrites the chapter text every reader sees, so only admins may.
 	if input.TranslatedText != "" {
+		if !h.requireAdmin(w, r) {
+			return
+		}
 		chapter, err := h.chapterUsecase.GetChapter(r.Context(), chapterID)
 		if err != nil {
 			h.respond(w, http.StatusInternalServerError, Response{Error: err.Error()})
@@ -644,6 +664,7 @@ func (h *Handler) GetTranslationHistory(w http.ResponseWriter, r *http.Request) 
 			limit = 50
 		}
 		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		limit, offset = domain.NormalizePage(limit, offset, 50)
 
 		histories, total, err := h.translationHistoryRepo.ListByNovelID(r.Context(), novelID, limit, offset)
 		if err != nil {
@@ -701,11 +722,10 @@ func (h *Handler) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var tokenString string
 
-		// Try Authorization header first (for API clients)
-		authHeader := r.Header.Get("Authorization")
-		if authHeader != "" {
-			tokenString = strings.TrimPrefix(authHeader, "Bearer ")
-		}
+		// Try Authorization header first (for API clients). Browser code that
+		// reads a missing localStorage token sends "Bearer null"; treat such
+		// placeholders as no header so the session cookie still applies.
+		tokenString = bearerToken(r.Header.Get("Authorization"))
 
 		// Fall back to HTTP-only cookie (for browser clients)
 		if tokenString == "" {
@@ -728,26 +748,99 @@ func (h *Handler) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 		ctx := r.Context()
 		ctx = contextWithUserID(ctx, claims.UserID)
+		ctx = context.WithValue(ctx, claimsKey, claims)
 		next(w, r.WithContext(ctx))
 	}
 }
 
+// AdminMiddleware is AuthMiddleware plus an admin-role check against the
+// current user record (so a demotion takes effect without a new token).
+func (h *Handler) AdminMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return h.AuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if h.requireAdmin(w, r) {
+			next(w, r)
+		}
+	})
+}
+
+// requireAdmin checks that the authenticated session user is currently an
+// admin. It writes the error response and returns false otherwise. Use it
+// behind AuthMiddleware for handlers where only some requests need admin.
+func (h *Handler) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
+	userID, ok := GetUserIDFromContext(r.Context())
+	if !ok {
+		h.respond(w, http.StatusUnauthorized, Response{Error: "Authorization required"})
+		return false
+	}
+	user, err := h.userUsecase.GetByID(r.Context(), userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		h.respond(w, http.StatusUnauthorized, Response{Error: "User not found"})
+		return false
+	}
+	if err != nil {
+		log.Printf("[ERROR] admin check: user lookup failed: %v", err)
+		h.respond(w, http.StatusServiceUnavailable, Response{Error: "Could not verify permissions"})
+		return false
+	}
+	if user == nil {
+		h.respond(w, http.StatusUnauthorized, Response{Error: "User not found"})
+		return false
+	}
+	if !user.IsAdmin() {
+		h.respond(w, http.StatusForbidden, Response{Error: "Admin role required"})
+		return false
+	}
+	return true
+}
+
 // Helper functions
+
+// bearerToken returns the token of an "Authorization: Bearer <token>" header,
+// or "" when the header is absent or carries an empty/"null"/"undefined"
+// placeholder.
+func bearerToken(header string) string {
+	header = strings.TrimSpace(header)
+	if len(header) < 7 || !strings.EqualFold(header[:7], "Bearer ") {
+		return ""
+	}
+	token := strings.TrimSpace(header[7:])
+	switch token {
+	case "", "null", "undefined":
+		return ""
+	}
+	return token
+}
 
 func (h *Handler) respond(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
-
-type ctxKey string
 
 func contextWithUserID(ctx context.Context, userID string) context.Context {
-	return context.WithValue(ctx, ctxKey("userID"), userID)
+	return context.WithValue(ctx, UserIDKey, userID)
 }
 
-// GetUserIDFromContext extracts user ID from context
+// sessionUserID returns the authenticated user's ID for a per-user handler.
+// The session alone decides whose data is read or written: a request without
+// one gets 401, and a legacy user_id query parameter naming anyone else gets
+// 403 (a matching one is accepted so older clients keep working).
+func sessionUserID(w http.ResponseWriter, r *http.Request) (string, bool) {
+	userID, ok := GetUserIDFromContext(r.Context())
+	if !ok {
+		Unauthorized(w, "Authorization required")
+		return "", false
+	}
+	if q := r.URL.Query().Get("user_id"); q != "" && q != userID {
+		WriteJSON(w, http.StatusForbidden, ErrorResponse{Success: false, Error: "user_id does not match the authenticated user"})
+		return "", false
+	}
+	return userID, true
+}
+
+// GetUserIDFromContext extracts the user ID AuthMiddleware stored. An empty
+// ID counts as missing.
 func GetUserIDFromContext(ctx context.Context) (string, bool) {
 	userID, ok := ctx.Value(UserIDKey).(string)
-	return userID, ok
+	return userID, ok && userID != ""
 }

@@ -2,9 +2,7 @@
 Tests for terminology module.
 """
 
-import pytest
 from terminology import (
-    KNOWN_TERMINOLOGY,
     get_known_terminology,
     get_term_translation,
     apply_terminology_to_text,

@@ -51,6 +51,11 @@ a real bug found by wiring up a test runner that had never been connected
                               └─────────────┘
 ```
 
+The browser only talks to the backend. AI calls (scrape, translate, manga,
+review queue) go to `/api/ai/*` on the backend, which checks the user's
+session and forwards to ai-service with the server-side `AI_SERVICE_TOKEN`.
+ai-service still applies its own SSRF guard to every URL it fetches.
+
 ### Tech Stack
 | Component | Technology |
 |-----------|------------|
@@ -187,9 +192,9 @@ bookreading/
 POST   /api/auth/register          - Register user
 POST   /api/auth/login             - Login user
 GET    /api/novels                 - List novels
-POST   /api/novels                 - Scrape novel
+POST   /api/novels                 - Scrape novel (admin)
 GET    /api/chapters               - List chapters
-POST   /api/chapters/translate     - Translate chapter
+POST   /api/chapters/translate     - Translate chapter (signed in; saving text: admin)
 POST   /api/subscriptions          - Subscribe to updates
 GET    /api/subscriptions          - Get subscriptions
 POST   /api/reading-progress       - Save progress

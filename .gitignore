@@ -3,7 +3,8 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
+# frontend/package-lock.json is tracked: CI uses `npm ci`.
+*.tsbuildinfo
 
 # Go
 backend/vendor/

@@ -4,7 +4,6 @@ Passes last 3-5 chapters, character relationships, and key events.
 Significantly improves translation consistency and quality.
 """
 
-import json
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 

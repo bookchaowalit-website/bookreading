@@ -18,7 +18,10 @@ fi
 export ALLOWED_ORIGINS="http://localhost:${WEB_PORT},http://127.0.0.1:${WEB_PORT}"
 export DATABASE_URL="${DATABASE_URL:-}"
 export LLM_PROVIDER="${LLM_PROVIDER:-google_translate}"
-export NEXT_PUBLIC_AI_SERVICE_URL="http://127.0.0.1:${AI_PORT}"
+# No Go backend here, so the reader talks to the token-less local ai-service
+# directly. Local-only: deployed builds go through the backend /api/ai proxy.
+export NEXT_PUBLIC_AI_DIRECT_URL="http://127.0.0.1:${AI_PORT}"
+unset AI_SERVICE_TOKEN
 export NEXT_PUBLIC_BACKEND_URL="${NEXT_PUBLIC_BACKEND_URL:-http://127.0.0.1:8888}"
 
 echo "AI  http://127.0.0.1:${AI_PORT}"

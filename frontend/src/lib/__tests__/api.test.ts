@@ -210,6 +210,78 @@ describe('API Client (@/lib/api)', () => {
     });
   });
 
+  describe('AI API (backend proxy)', () => {
+    it('sends ai-service calls to the backend /api/ai proxy, never axios directly', async () => {
+      const { aiApi } = await loadApi();
+      mockInstance.post.mockResolvedValue({ data: { translated_text: 'สวัสดี', model_used: 'm' } });
+
+      const result = await aiApi.translateContent('你好', 'zh', 'th');
+
+      expect(mockInstance.post).toHaveBeenCalledWith('/api/ai/translate', {
+        text: '你好',
+        source_lang: 'zh',
+        target_lang: 'th',
+      });
+      expect(mockAxiosPost).not.toHaveBeenCalled();
+      expect(result.translated_text).toBe('สวัสดี');
+    });
+
+    it('routes scraping and manga fetches through the proxy', async () => {
+      const { aiApi } = await loadApi();
+      mockInstance.post.mockResolvedValue({ data: { chapters: [], terms: [] } });
+
+      await aiApi.scrapeNovel('https://www.piaotia.com/1', 'zh');
+      await aiApi.fetchChapterContent('https://www.piaotia.com/1/2.html');
+
+      const paths = mockInstance.post.mock.calls.map(([url]) => url);
+      expect(paths).toEqual(['/api/ai/scrape', '/api/ai/chapter']);
+      expect(mockAxiosPost).not.toHaveBeenCalled();
+    });
+
+    it('encodes the novel id in terminology lookups', async () => {
+      const { aiApi } = await loadApi();
+      mockInstance.get.mockResolvedValue({ data: { terms: [] } });
+
+      await aiApi.getNovelTerminology('../docs');
+
+      expect(mockInstance.get).toHaveBeenCalledWith('/api/ai/terminology/..%2Fdocs');
+    });
+
+    it('only bypasses the backend when the local-only direct URL is set', async () => {
+      const prev = process.env.NEXT_PUBLIC_AI_DIRECT_URL;
+      process.env.NEXT_PUBLIC_AI_DIRECT_URL = 'http://127.0.0.1:8000';
+      try {
+        const { aiApi } = await loadApi();
+        mockInstance.post.mockResolvedValue({ data: { translated_text: 'x' } });
+        await aiApi.translateContent('t');
+        expect(mockCreate).toHaveBeenCalledWith({ baseURL: 'http://127.0.0.1:8000' });
+        expect(mockInstance.post).toHaveBeenCalledWith('/translate', expect.any(Object));
+      } finally {
+        if (prev === undefined) {
+          delete process.env.NEXT_PUBLIC_AI_DIRECT_URL;
+        } else {
+          process.env.NEXT_PUBLIC_AI_DIRECT_URL = prev;
+        }
+      }
+    });
+
+    it('review queue calls go through the proxy with params', async () => {
+      const { aiReviewApi } = await loadApi();
+      mockInstance.get.mockResolvedValue({ data: { items: [] } });
+      mockInstance.post.mockResolvedValue({ data: { success: true } });
+
+      await aiReviewApi.getPending(100);
+      await aiReviewApi.reject('item-1', 'bad tone');
+
+      expect(mockInstance.get).toHaveBeenCalledWith('/api/ai/review/pending', { params: { limit: 100 } });
+      expect(mockInstance.post).toHaveBeenCalledWith('/api/ai/review/reject', {
+        item_id: 'item-1',
+        reviewer: 'admin',
+        notes: 'bad tone',
+      });
+    });
+  });
+
   describe('Novel API', () => {
     it('calls listNovels with correct query params and unwraps data', async () => {
       const { novelApi } = await loadApi();
@@ -364,5 +436,24 @@ describe('New API Client (@/lib/new-api)', () => {
         params: { user_id: 'user-1' },
       });
     });
+  });
+});
+
+describe('authHeader', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('omits Authorization without a stored token (the cookie carries the session)', async () => {
+    const { authHeader } = await loadApi();
+    expect(authHeader()).toEqual({});
+    localStorage.setItem('token', 'null');
+    expect(authHeader()).toEqual({});
+  });
+
+  it('sends a stored dev token as a bearer header', async () => {
+    const { authHeader } = await loadApi();
+    localStorage.setItem('token', 'abc');
+    expect(authHeader()).toEqual({ Authorization: 'Bearer abc' });
   });
 });

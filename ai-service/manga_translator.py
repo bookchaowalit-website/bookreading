@@ -13,13 +13,13 @@ Features:
 import os
 import re
 import json
-import base64
-import asyncio
-from typing import List, Dict, Optional, Tuple, Any
+import logging
+from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 from io import BytesIO
-import asyncio
+
+logger = logging.getLogger(__name__)
 
 # OCR
 try:
@@ -29,7 +29,7 @@ except ImportError:
     EASYOCR_AVAILABLE = False
 
 # Image processing
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFont
 
 # OpenAI for translation
 from openai import AsyncOpenAI
@@ -714,7 +714,6 @@ class MangaImageRenderer:
         """Calculate appropriate font size to fit text in box"""
         # Start with original size and reduce if needed
         font_size = original_size
-        font = self._get_font(font_size)
         
         # Estimate text dimensions
         char_width = font_size * 0.6  # Approximate
@@ -853,12 +852,6 @@ def create_manga_translator(
 ) -> MangaTranslationPipeline:
     """Factory function to create manga translator"""
     
-    lang_map = {
-        "ko": SourceLanguage.KOREAN,
-        "ja": SourceLanguage.JAPANESE,
-        "zh": SourceLanguage.CHINESE,
-        "zh-TW": SourceLanguage.CHINESE_TRAD,
-    }
     
     return MangaTranslationPipeline(
         openai_api_key=openai_api_key,

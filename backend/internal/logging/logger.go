@@ -97,9 +97,9 @@ func (l *Logger) log(level LogLevel, message string, fields map[string]interface
 
 	switch level {
 	case ERROR, FATAL:
-		fmt.Fprintln(os.Stderr, string(jsonBytes))
+		_, _ = fmt.Fprintln(os.Stderr, string(jsonBytes))
 	default:
-		fmt.Fprintln(os.Stdout, string(jsonBytes))
+		_, _ = fmt.Fprintln(os.Stdout, string(jsonBytes))
 	}
 
 	if level == FATAL {

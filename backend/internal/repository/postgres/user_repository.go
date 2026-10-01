@@ -6,6 +6,7 @@ import (
 
 	"github.com/bookreading/backend/internal/domain"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 )
 
 type UserRepository struct {
@@ -53,11 +54,25 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.
 	return &user, nil
 }
 
+// GetByStripeSubscriptionID returns (nil, nil) when no user owns the subscription.
+func (r *UserRepository) GetByStripeSubscriptionID(ctx context.Context, subscriptionID string) (*domain.User, error) {
+	var user domain.User
+	query := `SELECT * FROM users WHERE stripe_subscription_id = $1`
+	err := r.db.GetContext(ctx, &user, query, subscriptionID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
 func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
 	query := `
 		UPDATE users 
 		SET name = $2, avatar_url = $3, subscription_plan = $4, subscription_status = $5,
-		    stripe_customer_id = $6, stripe_subscription_id = $7
+		    stripe_customer_id = $6, stripe_subscription_id = $7, stripe_event_at = $8
 		WHERE id = $1
 		RETURNING updated_at
 	`
@@ -69,7 +84,24 @@ func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
 		user.SubscriptionStatus,
 		user.StripeCustomerID,
 		user.StripeSubscriptionID,
+		user.StripeEventAt,
 	).Scan(&user.UpdatedAt)
+}
+
+// PromoteAdminsByID grants the admin role to existing users whose ID is in
+// ids (canonical UUID strings). It never demotes anyone and never creates
+// accounts. It returns the number of users changed.
+func (r *UserRepository) PromoteAdminsByID(ctx context.Context, ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE users SET role = $1 WHERE id = ANY($2::uuid[]) AND role <> $1`,
+		domain.RoleAdmin, pq.Array(ids))
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 func (r *UserRepository) Delete(ctx context.Context, id string) error {
@@ -170,7 +202,12 @@ func (r *UserTerminologyRepository) Create(ctx context.Context, term *domain.Use
 
 func (r *UserTerminologyRepository) GetByUserID(ctx context.Context, userID string) ([]domain.UserTerminology, error) {
 	var terms []domain.UserTerminology
-	query := `SELECT * FROM user_terminology WHERE user_id = $1 ORDER BY created_at DESC`
+	// Explicit columns: the migration-built table also has novel_id, which
+	// domain.UserTerminology does not map (SELECT * made sqlx fail).
+	query := `SELECT id, user_id, original_term, translation,
+	                 COALESCE(term_type, '') AS term_type, COALESCE(description, '') AS description,
+	                 created_at, updated_at
+	          FROM user_terminology WHERE user_id = $1 ORDER BY created_at DESC`
 	err := r.db.SelectContext(ctx, &terms, query, userID)
 	if err != nil {
 		return nil, err
@@ -194,8 +231,18 @@ func (r *UserTerminologyRepository) Update(ctx context.Context, term *domain.Use
 	).Scan(&term.UpdatedAt)
 }
 
-func (r *UserTerminologyRepository) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM user_terminology WHERE id = $1`
-	_, err := r.db.ExecContext(ctx, query, id)
-	return err
+func (r *UserTerminologyRepository) Delete(ctx context.Context, userID, id string) error {
+	query := `DELETE FROM user_terminology WHERE id = $1 AND user_id = $2`
+	res, err := r.db.ExecContext(ctx, query, id, userID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }

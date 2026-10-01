@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -17,13 +16,13 @@ func TestHealthCheck(t *testing.T) {
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"healthy"}`))
+		_, _ = w.Write([]byte(`{"status":"healthy"}`))
 	})
 
 	mux.ServeHTTP(w, req)
 
 	resp := w.Result()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
@@ -112,7 +111,7 @@ func TestErrorResponse(t *testing.T) {
 	})
 
 	resp := w.Result()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", resp.StatusCode)
@@ -137,7 +136,7 @@ func TestSuccessResponse(t *testing.T) {
 	})
 
 	resp := w.Result()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
@@ -208,19 +207,4 @@ func TestAuthMiddleware(t *testing.T) {
 			}
 		})
 	}
-}
-
-// Test helper for creating requests
-func newTestRequest(method, url string, body interface{}) *http.Request {
-	var reader *strings.Reader
-	if body != nil {
-		jsonBody, _ := json.Marshal(body)
-		reader = strings.NewReader(string(jsonBody))
-	} else {
-		reader = strings.NewReader("")
-	}
-
-	req := httptest.NewRequest(method, url, reader)
-	req.Header.Set("Content-Type", "application/json")
-	return req
 }

@@ -19,6 +19,18 @@ Most endpoints require JWT authentication via the `Authorization` header:
 Authorization: Bearer <jwt_token>
 ```
 
+### Per-user data is scoped to the session
+
+`/api/library`, `/api/terminology`, `/api/subscriptions`,
+`/api/reading-progress*`, `/api/bookmarks*`, `/api/feedback`,
+`/api/settings/api-keys` and `/api/payments/*` always act on the
+authenticated user. A legacy `user_id` query parameter is optional: a value
+equal to the session user is ignored, any other value returns `403`.
+Deleting a subscription, bookmark or terminology entry by `id` that belongs to
+another user returns `404` (same as a missing record).
+`POST /api/subscriptions/trigger-update` runs the update check for every
+user's due subscriptions and requires the admin role.
+
 ### Endpoints
 
 #### Health Check
@@ -81,9 +93,10 @@ Content-Type: application/json
 GET /api/novels?page=1&limit=20
 ```
 
-**Scrape Novel:**
+**Scrape Novel (admin only):** adds to the shared catalog.
 ```http
 POST /api/novels
+Authorization: Bearer <admin token>   (or the auth_token session cookie)
 Content-Type: application/json
 
 {
@@ -116,18 +129,31 @@ GET /api/chapters/detail?id=chapter_id
 GET /api/chapters/by-number?novel_id=123&chapter_number=5
 ```
 
-**Translate Chapter:**
+**Translate Chapter (signed in):** runs the server-side translation once
+and caches it on the chapter. Sending `translated_text` saves that text over
+the shared chapter and requires the admin role (403 otherwise).
 ```http
-POST /api/chapters/translate
+POST /api/chapters/translate?id=chapter_id
 Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "novel_id": "123",
-  "chapter_number": 5,
-  "translator_type": "agentic"
+  "target_lang": "th",
+  "use_context": true
 }
 ```
+
+**Update Chapter (admin only):**
+```http
+POST /api/chapters/update?id=chapter_id
+Authorization: Bearer <admin token>
+Content-Type: application/json
+
+{ "original_content": "...", "is_scraped": true }
+```
+
+Access levels for every route are pinned by
+`backend/internal/delivery/http/routes_access_test.go`.
 
 ---
 
@@ -244,7 +270,22 @@ resp, err := client.ListNovels(context.Background(), &pb.ListNovelsRequest{
 ## AI Service API
 
 ### Base URL
-- Development: `http://localhost:8000`
+- Browser / frontend: `{BACKEND_URL}/api/ai` (for example
+  `POST /api/ai/translate`). The backend requires a logged-in session
+  (`auth_token` cookie or `Authorization: Bearer <jwt>`), then forwards to
+  ai-service with `Authorization: Bearer $AI_SERVICE_TOKEN`. Only the paths the frontend
+  uses are allow-listed (`aiProxyRoutes` in
+  `backend/internal/delivery/http/ai_proxy_handler.go`); others return 404.
+  Request bodies are capped at 2 MiB (32 MiB for manga image routes). The
+  manga health/supported-* metadata routes are public.
+  `POST /api/ai/review/approve|edit|reject` additionally require the admin
+  role (403 otherwise, checked against the current user record).
+  Admins are bootstrapped with `ADMIN_USER_IDS` (account UUIDs from
+  `GET /api/users/me`), see `.env.example`. Email addresses are not used
+  because registration does not verify email ownership: anyone could
+  register a listed address first. `ADMIN_EMAILS` is ignored.
+- Service-to-service only: `http://ai-service:8000` (development:
+  `http://localhost:8000`, loopback-bound). Not for browsers.
 
 ### Endpoints
 

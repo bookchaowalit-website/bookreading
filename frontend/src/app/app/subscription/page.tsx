@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useToast } from '@/providers/ToastProvider';
+import { subscriptionNeedsAttention, subscriptionStatusLabel } from '@/lib/subscriptionStatus';
 import { Check, Loader2, ExternalLink, CreditCard, AlertTriangle } from 'lucide-react';
 
 interface PricingPlan {
@@ -140,8 +141,13 @@ export default function SubscriptionPage() {
               แผนปัจจุบัน: {currentPlan.toUpperCase()}
             </p>
             <p className="text-sm text-blue-700 dark:text-blue-300">
-              สถานะ: {status === 'active' ? 'ใช้งานอยู่' : status === 'canceling' ? 'กำลังยกเลิก' : status}
+              สถานะ: {subscriptionStatusLabel(status)}
             </p>
+            {subscriptionNeedsAttention(status) && (
+              <p role="alert" className="mt-1 text-sm text-red-700 dark:text-red-300">
+                กดปุ่มจัดการการชำระเงินเพื่ออัปเดตบัตรหรือชำระยอดค้าง
+              </p>
+            )}
           </div>
           <button
             onClick={handleManageBilling}

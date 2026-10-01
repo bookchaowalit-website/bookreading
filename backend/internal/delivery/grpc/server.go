@@ -13,6 +13,13 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// Default page sizes for the gRPC list RPCs. They match the defaults the
+// use cases apply through domain.NormalizePage, so HTTP and gRPC agree.
+const (
+	defaultNovelPageSize   = 20
+	defaultChapterPageSize = 50
+)
+
 type bookReadingServer struct {
 	pb.UnimplementedBookReadingServiceServer
 	novelUseCase       domain.NovelUseCase
@@ -70,7 +77,8 @@ func (s *bookReadingServer) GetNovel(ctx context.Context, req *pb.GetNovelReques
 }
 
 func (s *bookReadingServer) ListNovels(ctx context.Context, req *pb.ListNovelsRequest) (*pb.NovelListResponse, error) {
-	novels, total, err := s.novelUseCase.ListNovels(ctx, int(req.PageSize), int(req.Page-1)*int(req.PageSize), req.Status)
+	limit, offset, page, pageSize := pageWindow(req.Page, req.PageSize, defaultNovelPageSize)
+	novels, total, err := s.novelUseCase.ListNovels(ctx, limit, offset, req.Status)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -83,8 +91,8 @@ func (s *bookReadingServer) ListNovels(ctx context.Context, req *pb.ListNovelsRe
 	return &pb.NovelListResponse{
 		Novels:     protoNovels,
 		TotalCount: int32(total),
-		Page:       req.Page,
-		PageSize:   req.PageSize,
+		Page:       page,
+		PageSize:   pageSize,
 	}, nil
 }
 
@@ -116,7 +124,8 @@ func (s *bookReadingServer) GetChapter(ctx context.Context, req *pb.GetChapterRe
 }
 
 func (s *bookReadingServer) ListChapters(ctx context.Context, req *pb.ListChaptersRequest) (*pb.ChapterListResponse, error) {
-	chapters, total, err := s.chapterUseCase.ListChapters(ctx, req.NovelId, int(req.PageSize), int(req.Page-1)*int(req.PageSize))
+	limit, offset, page, pageSize := pageWindow(req.Page, req.PageSize, defaultChapterPageSize)
+	chapters, total, err := s.chapterUseCase.ListChapters(ctx, req.NovelId, limit, offset)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -129,8 +138,8 @@ func (s *bookReadingServer) ListChapters(ctx context.Context, req *pb.ListChapte
 	return &pb.ChapterListResponse{
 		Chapters:   protoChapters,
 		TotalCount: int32(total),
-		Page:       req.Page,
-		PageSize:   req.PageSize,
+		Page:       page,
+		PageSize:   pageSize,
 	}, nil
 }
 

@@ -39,6 +39,7 @@ func (uc *novelUseCase) GetNovel(ctx context.Context, id string) (*domain.Novel,
 }
 
 func (uc *novelUseCase) ListNovels(ctx context.Context, limit, offset int, status string) ([]*domain.Novel, int, error) {
+	limit, offset = domain.NormalizePage(limit, offset, 20)
 	return uc.novelRepo.List(ctx, limit, offset, status)
 }
 

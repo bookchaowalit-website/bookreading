@@ -6,7 +6,7 @@ Each chunk carries context from the previous chunk.
 """
 
 import re
-from typing import List, Dict, Optional
+from typing import List
 from dataclasses import dataclass
 
 

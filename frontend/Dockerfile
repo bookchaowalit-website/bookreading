@@ -5,18 +5,16 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
 
 # Build arguments for environment variables
-ARG NEXT_PUBLIC_AI_SERVICE_URL
 ARG NEXT_PUBLIC_BACKEND_URL
 
-ENV NEXT_PUBLIC_AI_SERVICE_URL=$NEXT_PUBLIC_AI_SERVICE_URL
 ENV NEXT_PUBLIC_BACKEND_URL=$NEXT_PUBLIC_BACKEND_URL
 
 COPY --from=deps /app/node_modules ./node_modules

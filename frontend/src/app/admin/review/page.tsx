@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
+import { aiReviewApi } from '@/lib/api';
+import { useIsAdmin } from '@/hooks/useIsAdmin';
 import {
   CheckCircle2, XCircle, FileText, Search, BarChart3, AlertTriangle,
   Lightbulb, BookOpen, Library, Target, Moon, Sun, RefreshCw,
@@ -42,7 +44,6 @@ interface Toast {
   type: 'success' | 'error' | 'info';
 }
 
-const API_URL = process.env.NEXT_PUBLIC_AI_SERVICE_URL || 'http://localhost:8000';
 
 export default function ReviewQueuePage() {
   const [items, setItems] = useState<ReviewItem[]>([]);
@@ -59,6 +60,9 @@ export default function ReviewQueuePage() {
   const [showOriginal, setShowOriginal] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ action: 'approve' | 'reject' | null; itemId: string | null }>({ action: null, itemId: null });
   const [rejectNotes, setRejectNotes] = useState('');
+  // Approve/edit/reject are admin-only on the backend (403 otherwise), so
+  // non-admins get a read-only view.
+  const { isAdmin: canModerate, loading: roleLoading } = useIsAdmin();
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -70,12 +74,12 @@ export default function ReviewQueuePage() {
         setSelectedItem(null);
       }
       // A to approve
-      if (e.key === 'a' && !e.ctrlKey && !e.metaKey && document.activeElement?.tagName !== 'TEXTAREA') {
+      if (canModerate && e.key === 'a' && !e.ctrlKey && !e.metaKey && document.activeElement?.tagName !== 'TEXTAREA') {
         e.preventDefault();
         setConfirmModal({ action: 'approve', itemId: selectedItem.id });
       }
       // R to reject
-      if (e.key === 'r' && !e.ctrlKey && !e.metaKey && document.activeElement?.tagName !== 'TEXTAREA') {
+      if (canModerate && e.key === 'r' && !e.ctrlKey && !e.metaKey && document.activeElement?.tagName !== 'TEXTAREA') {
         e.preventDefault();
         setConfirmModal({ action: 'reject', itemId: selectedItem.id });
       }
@@ -88,7 +92,7 @@ export default function ReviewQueuePage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedItem, actionLoading, showOriginal]);
+  }, [selectedItem, actionLoading, showOriginal, canModerate]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -116,8 +120,7 @@ export default function ReviewQueuePage() {
 
   const fetchItems = async () => {
     try {
-      const response = await fetch(`${API_URL}/review/pending?limit=100`);
-      const data = await response.json();
+      const data = await aiReviewApi.getPending(100);
 
       let filteredItems = data.items || [];
       if (filter === 'high') {
@@ -147,9 +150,7 @@ export default function ReviewQueuePage() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch(`${API_URL}/review/stats`);
-      const data = await response.json();
-      setStats(data);
+      setStats(await aiReviewApi.getStats());
     } catch (error) {
       console.error('Failed to fetch stats:', error);
     }
@@ -158,23 +159,14 @@ export default function ReviewQueuePage() {
   const handleApprove = async (itemId: string) => {
     setActionLoading(itemId);
     try {
-      const response = await fetch(`${API_URL}/review/approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id: itemId, reviewer: 'admin' }),
-      });
-
-      if (response.ok) {
-        setItems(items.filter(i => i.id !== itemId));
-        setSelectedItem(null);
-        fetchStats();
-        showToast('อนุมัติเรียบร้อยแล้ว', 'success');
-      } else {
-        showToast('ไม่สามารถอนุมัติได้', 'error');
-      }
+      await aiReviewApi.approve(itemId);
+      setItems(items.filter(i => i.id !== itemId));
+      setSelectedItem(null);
+      fetchStats();
+      showToast('อนุมัติเรียบร้อยแล้ว', 'success');
     } catch (error) {
       console.error('Failed to approve:', error);
-      showToast('เกิดข้อผิดพลาด', 'error');
+      showToast('ไม่สามารถอนุมัติได้', 'error');
     } finally {
       setActionLoading(null);
       setConfirmModal({ action: null, itemId: null });
@@ -189,24 +181,15 @@ export default function ReviewQueuePage() {
 
     setActionLoading(itemId);
     try {
-      const response = await fetch(`${API_URL}/review/edit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id: itemId, edited_text: editedText, reviewer: 'admin' }),
-      });
-
-      if (response.ok) {
-        setItems(items.filter(i => i.id !== itemId));
-        setSelectedItem(null);
-        setEditedText('');
-        fetchStats();
-        showToast('แก้ไขและอนุมัติเรียบร้อยแล้ว', 'success');
-      } else {
-        showToast('ไม่สามารถบันทึกได้', 'error');
-      }
+      await aiReviewApi.edit(itemId, editedText);
+      setItems(items.filter(i => i.id !== itemId));
+      setSelectedItem(null);
+      setEditedText('');
+      fetchStats();
+      showToast('แก้ไขและอนุมัติเรียบร้อยแล้ว', 'success');
     } catch (error) {
       console.error('Failed to edit:', error);
-      showToast('เกิดข้อผิดพลาด', 'error');
+      showToast('ไม่สามารถบันทึกได้', 'error');
     } finally {
       setActionLoading(null);
     }
@@ -215,24 +198,15 @@ export default function ReviewQueuePage() {
   const handleReject = async (itemId: string, notes: string) => {
     setActionLoading(itemId);
     try {
-      const response = await fetch(`${API_URL}/review/reject`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id: itemId, reviewer: 'admin', notes }),
-      });
-
-      if (response.ok) {
-        setItems(items.filter(i => i.id !== itemId));
-        setSelectedItem(null);
-        setRejectNotes('');
-        fetchStats();
-        showToast('ปฏิเสธแล้ว จะแปลใหม่', 'info');
-      } else {
-        showToast('ไม่สามารถปฏิเสธได้', 'error');
-      }
+      await aiReviewApi.reject(itemId, notes);
+      setItems(items.filter(i => i.id !== itemId));
+      setSelectedItem(null);
+      setRejectNotes('');
+      fetchStats();
+      showToast('ปฏิเสธแล้ว จะแปลใหม่', 'info');
     } catch (error) {
       console.error('Failed to reject:', error);
-      showToast('เกิดข้อผิดพลาด', 'error');
+      showToast('ไม่สามารถปฏิเสธได้', 'error');
     } finally {
       setActionLoading(null);
       setConfirmModal({ action: null, itemId: null });
@@ -303,7 +277,7 @@ export default function ReviewQueuePage() {
       </div>
 
       {/* Confirm Modal */}
-      {confirmModal.action && (
+      {canModerate && confirmModal.action && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
             <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
@@ -708,7 +682,7 @@ export default function ReviewQueuePage() {
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                        <Edit3 size={14} /> ข้อความที่แปล (สามารถแก้ไขได้)
+                        <Edit3 size={14} /> ข้อความที่แปล{canModerate ? ' (สามารถแก้ไขได้)' : ''}
                       </label>
                       <span className="text-xs text-gray-400">
                         {editedText.length} ตัวอักษร
@@ -717,6 +691,8 @@ export default function ReviewQueuePage() {
                     <textarea
                       value={editedText}
                       onChange={(e) => setEditedText(e.target.value)}
+                      readOnly={!canModerate}
+                      aria-label="ข้อความที่แปล"
                       className="w-full h-72 p-4 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-950 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-sarabun leading-relaxed"
                       placeholder="ข้อความแปล..."
                     />
@@ -724,37 +700,45 @@ export default function ReviewQueuePage() {
 
                   {/* Action Buttons */}
                   <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <button
-                      onClick={() => handleApprove(selectedItem.id)}
-                      disabled={actionLoading !== null}
-                      className="flex-1 md:flex-none px-6 py-3 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
-                    >
-                      {actionLoading === selectedItem.id ? (
-                        <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                      ) : (
-                        <CheckCircle2 size={18} />
-                      )} อนุมัติ
-                    </button>
+                    {canModerate ? (
+                      <>
+                        <button
+                          onClick={() => handleApprove(selectedItem.id)}
+                          disabled={actionLoading !== null}
+                          className="flex-1 md:flex-none px-6 py-3 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+                        >
+                          {actionLoading === selectedItem.id ? (
+                            <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                          ) : (
+                            <CheckCircle2 size={18} />
+                          )} อนุมัติ
+                        </button>
 
-                    <button
-                      onClick={() => handleEdit(selectedItem.id)}
-                      disabled={actionLoading !== null || editedText === selectedItem.translated_text}
-                      className="flex-1 md:flex-none px-6 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
-                    >
-                      {actionLoading === selectedItem.id ? (
-                        <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                      ) : (
-                        <Edit3 size={18} />
-                      )} บันทึกการแก้ไข
-                    </button>
+                        <button
+                          onClick={() => handleEdit(selectedItem.id)}
+                          disabled={actionLoading !== null || editedText === selectedItem.translated_text}
+                          className="flex-1 md:flex-none px-6 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+                        >
+                          {actionLoading === selectedItem.id ? (
+                            <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                          ) : (
+                            <Edit3 size={18} />
+                          )} บันทึกการแก้ไข
+                        </button>
 
-                    <button
-                      onClick={() => setConfirmModal({ action: 'reject', itemId: selectedItem.id })}
-                      disabled={actionLoading !== null}
-                      className="flex-1 md:flex-none px-6 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
-                    >
-                      <XCircle size={18} /> ปฏิเสธ
-                    </button>
+                        <button
+                          onClick={() => setConfirmModal({ action: 'reject', itemId: selectedItem.id })}
+                          disabled={actionLoading !== null}
+                          className="flex-1 md:flex-none px-6 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+                        >
+                          <XCircle size={18} /> ปฏิเสธ
+                        </button>
+                      </>
+                    ) : (
+                      <p role="status" className="flex-1 text-sm text-gray-500 dark:text-gray-400 self-center">
+                        {roleLoading ? 'กำลังตรวจสอบสิทธิ์...' : 'ดูได้อย่างเดียว: เฉพาะผู้ดูแลระบบที่อนุมัติ แก้ไข หรือปฏิเสธได้'}
+                      </p>
+                    )}
 
                     <button
                       onClick={handleNext}

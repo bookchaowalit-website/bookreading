@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict
@@ -21,39 +21,27 @@ from agentic_translator import (
     TerminologyTerm,
     NovelContext,
     ChapterContext,
-    TranslationResult,
     create_translator,
 )
 
 # Import multi-agent translator
 from multi_agent_translator import (
     TranslationPipeline,
-    ReviewQueueManager,
-    ReviewQueueItem,
-    QualityScore,
-    PipelineResult,
     CharacterInfo,
-    QualityGrade,
-    ReviewStatus,
     create_pipeline,
     review_queue,
 )
 
 # Import database manager
 from db_manager import (
-    DatabaseManager,
     get_db_manager,
-    close_db,
 )
 
 # Import improved translation pipeline
-from improved_pipeline import ImprovedTranslationPipeline
 from translation_cache import translation_cache
 from manga_translator import (
     MangaTranslationPipeline,
     MangaTranslationContext,
-    MangaTranslationResult,
-    TextRegion,
     SourceLanguage,
     create_manga_translator,
     EASYOCR_AVAILABLE,
@@ -68,7 +56,15 @@ import base64
 RATE_LIMIT_DELAY = 1.0  # seconds between requests to same domain
 last_request_time = {}
 
-app = FastAPI(title="BookReading AI Service", version="1.0.0")
+from service_auth import require_service_token
+
+# Every route requires the shared bearer token when AI_SERVICE_TOKEN is set
+# (health/metadata routes excepted; see service_auth.PUBLIC_PATHS).
+app = FastAPI(
+    title="BookReading AI Service",
+    version="1.0.0",
+    dependencies=[Depends(require_service_token)],
+)
 
 # CORS Configuration - read from environment variable
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
@@ -372,7 +368,7 @@ def translate_with_google(text: str, source_lang: str, target_lang: str) -> str:
             print(f"deep_translator failed: {e}")
 
         # Return original if all methods fail
-        print(f"All translation methods failed for chunk")
+        print("All translation methods failed for chunk")
         return chunk
 
     if len(processed_text) > max_chars:
@@ -416,6 +412,18 @@ def apply_terminology(text: str, terminology: List[Term], source_lang: str, targ
 
 
 # Scraping functions
+from url_safety import (
+    UnsafeURLError,
+    manga_image_domains,
+    manga_page_domains,
+    novel_allowed_domains,
+    safe_get,
+    validate_url,
+)
+
+# Webtoon strips are tall; allow bigger bodies for page images than for HTML.
+MAX_MANGA_IMAGE_BYTES = 20 * 1024 * 1024
+
 PIAOTIA_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -425,8 +433,9 @@ PIAOTIA_HEADERS = {
 
 def piaotia_http_client() -> httpx.AsyncClient:
     """Browser-like client so Cloudflare/GBK novel sites do not reject the scraper."""
+    # Redirects are followed by url_safety.safe_get, which re-validates each hop.
     return httpx.AsyncClient(
-        follow_redirects=True,
+        follow_redirects=False,
         timeout=30.0,
         headers=PIAOTIA_HEADERS,
     )
@@ -445,12 +454,11 @@ async def fetch_piaotia_page(client: httpx.AsyncClient, url: str) -> str:
     
     last_request_time[domain] = asyncio.get_event_loop().time()
     
-    response = await client.get(url, timeout=30, headers=PIAOTIA_HEADERS)
-    response.raise_for_status()
+    response = await safe_get(client, url, headers=PIAOTIA_HEADERS)
     # Try to decode with GBK encoding (common for Chinese sites)
     try:
         return response.content.decode('gbk')
-    except:
+    except Exception:
         return response.text
 
 
@@ -840,7 +848,7 @@ def extract_terms_from_text(text: str, source_lang: str, target_lang: str) -> Li
             # Try to translate the term
             try:
                 translation = translate_with_google(term, source_lang, target_lang)
-            except:
+            except Exception:
                 translation = term
             
             terms.append(ExtractedTerm(
@@ -857,41 +865,35 @@ def extract_terms_from_text(text: str, source_lang: str, target_lang: str) -> Li
 
 
 # Import Korean scraper
-from korean_scraper import scrape_korean_novel, SUPPORTED_KOREAN_SITES
+from korean_scraper import scrape_korean_novel
+from site_routing import (
+    detect_manga_site,
+    detect_novel_source,
+    host_matches,
+    is_webtoons_host,
+    url_host,
+)
 
 # API Endpoints
 @app.post("/scrape", response_model=ScrapeResponse)
 async def scrape_novel(request: ScrapeRequest):
     """Scrape a novel from supported sources (Chinese & Korean)"""
     try:
-        # Korean sources
-        if "munpia" in request.url or "munpia.com" in request.url:
-            return await scrape_korean_novel(request.url)
-        elif "ridibooks" in request.url or "ridibooks.com" in request.url:
-            return await scrape_korean_novel(request.url)
-        elif "series.naver.com" in request.url:
-            return await scrape_korean_novel(request.url)
-        elif "page.kakao.com" in request.url:
-            return await scrape_korean_novel(request.url)
-        elif "novelpia" in request.url or "novelpia.com" in request.url:
-            return await scrape_korean_novel(request.url)
-        # Chinese sources
-        elif "piaotia.com" in request.url:
-            return await scrape_piaotia_novel(request.url)
-        elif "qidian.com" in request.url or "qidian.qq.com" in request.url:
-            return await scrape_qidian_novel(request.url)
-        elif "69shu.com" in request.url:
-            return await scrape_69shu_novel(request.url)
-        elif "zongheng.com" in request.url:
-            return await scrape_zongheng_novel(request.url)
-        elif "17k.com" in request.url:
-            return await scrape_17k_novel(request.url)
-        else:
-            # Try generic scraping - detect if Korean or Chinese
-            if any(kw in request.url.lower() for kw in ['ko', 'korean', 'munpia', 'ridibooks', 'naver', 'kakao']):
-                return await scrape_korean_novel(request.url)
-            else:
-                return await scrape_generic_novel(request.url)
+        await validate_url(request.url, novel_allowed_domains())
+        source = detect_novel_source(request.url)
+        scrapers = {
+            "korean": scrape_korean_novel,
+            "piaotia": scrape_piaotia_novel,
+            "qidian": scrape_qidian_novel,
+            "69shu": scrape_69shu_novel,
+            "zongheng": scrape_zongheng_novel,
+            "17k": scrape_17k_novel,
+        }
+        return await scrapers.get(source, scrape_generic_novel)(request.url)
+    except UnsafeURLError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Scraping failed: {str(e)}")
 
@@ -910,8 +912,9 @@ class ChapterContentResponse(BaseModel):
 async def get_chapter_content(request: ChapterContentRequest):
     """Fetch content for a single chapter on-demand"""
     try:
+        await validate_url(request.url, novel_allowed_domains())
         async with piaotia_http_client() as client:
-            if "piaotia.com" in request.url:
+            if detect_novel_source(request.url) == "piaotia":
                 content = await fetch_piaotia_page(client, request.url)
                 soup = BeautifulSoup(content, 'lxml')
                 
@@ -937,6 +940,10 @@ async def get_chapter_content(request: ChapterContentRequest):
                 )
             else:
                 raise HTTPException(status_code=400, detail="Unsupported URL")
+    except UnsafeURLError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 429:
             raise HTTPException(status_code=429, detail="Rate limited. Please wait a moment and try again.")
@@ -951,7 +958,7 @@ async def scrape_qidian_novel(url: str) -> ScrapeResponse:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
-        response = await client.get(url, headers=headers, timeout=30)
+        response = await safe_get(client, url, headers=headers)
         response.raise_for_status()
         content = response.text
 
@@ -999,11 +1006,11 @@ async def scrape_qidian_novel(url: str) -> ScrapeResponse:
 async def scrape_69shu_novel(url: str) -> ScrapeResponse:
     """Scrape novel from 69shu.com"""
     async with httpx.AsyncClient() as client:
-        response = await client.get(url, timeout=30)
+        response = await safe_get(client, url)
         response.raise_for_status()
         try:
             content = response.content.decode('gbk')
-        except:
+        except Exception:
             content = response.text
 
     soup = BeautifulSoup(content, 'lxml')
@@ -1043,7 +1050,7 @@ async def scrape_zongheng_novel(url: str) -> ScrapeResponse:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
-        response = await client.get(url, headers=headers, timeout=30)
+        response = await safe_get(client, url, headers=headers)
         response.raise_for_status()
         content = response.text
 
@@ -1084,7 +1091,7 @@ async def scrape_17k_novel(url: str) -> ScrapeResponse:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
-        response = await client.get(url, headers=headers, timeout=30)
+        response = await safe_get(client, url, headers=headers)
         response.raise_for_status()
         content = response.text
 
@@ -1125,11 +1132,11 @@ async def scrape_generic_novel(url: str) -> ScrapeResponse:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
-        response = await client.get(url, headers=headers, timeout=30)
+        response = await safe_get(client, url, headers=headers)
         response.raise_for_status()
         try:
             content = response.content.decode('gbk')
-        except:
+        except Exception:
             content = response.text
 
     soup = BeautifulSoup(content, 'lxml')
@@ -1763,7 +1770,6 @@ async def get_pending_reviews(novel_id: Optional[str] = None, limit: int = 20):
                 "grade": item.quality_score.grade.value,
                 "overall_score": item.quality_score.overall_score,
                 "issues": item.quality_score.issues,
-                "strengths": item.quality_score.strengths,
                 "priority": item.priority,
                 "created_at": item.created_at.isoformat(),
             }
@@ -1896,7 +1902,6 @@ async def get_review_item(item_id: str):
             "accuracy_score": item.quality_score.accuracy_score,
             "dialogue_score": item.quality_score.dialogue_score,
             "issues": item.quality_score.issues,
-                "strengths": item.quality_score.strengths,
             "strengths": item.quality_score.strengths,
             "status": item.status.value,
             "priority": item.priority,
@@ -2385,68 +2390,24 @@ async def fetch_manga_from_url(request: MangaFetchRequest):
         chapter_number = None
         site_name = "Unknown"
 
-        # Detect site and fetch accordingly
-        if "webtoons.com" in url or "webtoon" in url:
-            result = await fetch_webtoons(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "Webtoons"
-        elif "mangadex.org" in url:
-            result = await fetch_mangadex(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "MangaDex"
-        elif "bato.to" in url or "batoto" in url:
-            result = await fetch_bato(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "Bato.to"
-        elif "mangakakalot" in url or "manganato" in url or "manganelo" in url:
-            result = await fetch_mangakakalot(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "MangaKakalot"
-        elif "toonily" in url:
-            result = await fetch_toonily(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "Toonily"
-        elif "asura" in url or "asurascans" in url:
-            result = await fetch_asura(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "Asura Scans"
-        elif "flame" in url or "flamecomics" in url:
-            result = await fetch_generic_manga(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "Flame Comics"
-        elif "reaperscans" in url:
-            result = await fetch_generic_manga(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "Reaper Scans"
-        elif "manhwa" in url or "manhua" in url:
-            result = await fetch_generic_manga(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "Manhwa/Manhua Site"
-        else:
-            # Generic fetch attempt
-            result = await fetch_generic_manga(url)
-            pages = result["pages"]
-            title = result["title"]
-            chapter_number = result.get("chapter_number")
-            site_name = "Manga Site"
+        # Only allow-listed manga hosts that resolve to public addresses.
+        await validate_url(url, manga_page_domains())
+
+        # Detect the site from the URL host (never from the path or query)
+        site = detect_manga_site(url)
+        fetchers = {
+            "webtoons": fetch_webtoons,
+            "mangadex": fetch_mangadex,
+            "bato": fetch_bato,
+            "mangakakalot": fetch_mangakakalot,
+            "toonily": fetch_toonily,
+            "asura": fetch_asura,
+        }
+        result = await fetchers.get(site.key, fetch_generic_manga)(url)
+        pages = result["pages"]
+        title = result["title"]
+        chapter_number = result.get("chapter_number")
+        site_name = site.name
 
         if not pages:
             raise HTTPException(status_code=400, detail="No images found at this URL")
@@ -2465,8 +2426,15 @@ async def fetch_manga_from_url(request: MangaFetchRequest):
             site_name=site_name,
         )
 
+    except UnsafeURLError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Manga site returned HTTP {e.response.status_code}",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch manga: {str(e)}")
 
@@ -2487,7 +2455,21 @@ async def fetch_webtoons(url: str) -> dict:
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             )
             page = await context.new_page()
-            
+
+            async def block_offsite_navigation(route):
+                # The browser resolves DNS itself, so at least keep every
+                # navigation (incl. redirects) on allow-listed manga hosts.
+                req = route.request
+                allowed = manga_page_domains()
+                if req.is_navigation_request() and not any(
+                    host_matches(url_host(req.url), d) for d in allowed
+                ):
+                    await route.abort()
+                else:
+                    await route.continue_()
+
+            await page.route("**/*", block_offsite_navigation)
+
             try:
                 await page.goto(url, wait_until="networkidle", timeout=60000)
                 
@@ -2524,8 +2506,7 @@ async def fetch_webtoons(url: str) -> dict:
                 "Referer": "https://www.webtoons.com/",
                 "Origin": "https://www.webtoons.com",
             }
-            response = await client.get(url, headers=headers, timeout=30)
-            response.raise_for_status()
+            response = await safe_get(client, url, allowed_domains=manga_page_domains(), headers=headers)
 
             soup = BeautifulSoup(response.text, 'lxml')
 
@@ -2563,8 +2544,9 @@ async def fetch_mangadex(url: str) -> dict:
 
         # Get chapter data from MangaDex API
         api_url = f"https://api.mangadex.org/at-home/server/{chapter_id}"
-        api_response = await client.get(api_url, headers=headers, timeout=30)
-        api_response.raise_for_status()
+        api_response = await safe_get(
+            client, api_url, allowed_domains=manga_page_domains(), headers=headers
+        )
         chapter_data = api_response.json()
 
         base_url = chapter_data["baseUrl"]
@@ -2576,8 +2558,13 @@ async def fetch_mangadex(url: str) -> dict:
 
         # Get manga title
         manga_url = f"https://api.mangadex.org/chapter/{chapter_id}?includes[]=manga"
-        manga_response = await client.get(manga_url, headers=headers, timeout=30)
-        manga_data = manga_response.json()
+        try:
+            manga_response = await safe_get(
+                client, manga_url, allowed_domains=manga_page_domains(), headers=headers
+            )
+            manga_data = manga_response.json()
+        except (UnsafeURLError, httpx.HTTPError, ValueError):
+            manga_data = {}  # the title is optional; the images already resolved
 
         title = "Unknown"
         for rel in manga_data.get("data", {}).get("relationships", []):
@@ -2595,8 +2582,7 @@ async def fetch_bato(url: str) -> dict:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
-        response = await client.get(url, headers=headers, timeout=30, follow_redirects=True)
-        response.raise_for_status()
+        response = await safe_get(client, url, allowed_domains=manga_page_domains(), headers=headers)
 
         soup = BeautifulSoup(response.text, 'lxml')
 
@@ -2627,8 +2613,7 @@ async def fetch_mangakakalot(url: str) -> dict:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
-        response = await client.get(url, headers=headers, timeout=30, follow_redirects=True)
-        response.raise_for_status()
+        response = await safe_get(client, url, allowed_domains=manga_page_domains(), headers=headers)
 
         soup = BeautifulSoup(response.text, 'lxml')
 
@@ -2665,8 +2650,7 @@ async def fetch_toonily(url: str) -> dict:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Referer": url,
         }
-        response = await client.get(url, headers=headers, timeout=30, follow_redirects=True)
-        response.raise_for_status()
+        response = await safe_get(client, url, allowed_domains=manga_page_domains(), headers=headers)
 
         soup = BeautifulSoup(response.text, 'lxml')
 
@@ -2697,8 +2681,7 @@ async def fetch_asura(url: str) -> dict:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Referer": url,
         }
-        response = await client.get(url, headers=headers, timeout=30, follow_redirects=True)
-        response.raise_for_status()
+        response = await safe_get(client, url, allowed_domains=manga_page_domains(), headers=headers)
 
         soup = BeautifulSoup(response.text, 'lxml')
 
@@ -2732,15 +2715,15 @@ async def fetch_generic_manga(url: str) -> dict:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
-        response = await client.get(url, headers=headers, timeout=30, follow_redirects=True)
+        response = await safe_get(client, url, allowed_domains=manga_page_domains(), headers=headers)
 
         # Try to decode with different encodings
         try:
             content = response.content.decode('utf-8')
-        except:
+        except Exception:
             try:
                 content = response.content.decode('gbk')
-            except:
+            except Exception:
                 content = response.text
 
         soup = BeautifulSoup(content, 'lxml')
@@ -2813,6 +2796,10 @@ async def translate_manga_from_url(request: MangaTranslateURLRequest):
         if not openai_key and not gemini_key:
             raise HTTPException(status_code=400, detail="API key required. Please add your OpenAI or Gemini API key in Settings.")
         
+        # Resolve the provider before validating it (it was previously read
+        # before assignment, raising UnboundLocalError on every request).
+        provider = request.provider or os.getenv("LLM_PROVIDER", "openai").lower()
+
         # Validate selected provider has a key
         provider_lower = provider.lower() if provider else "openai"
         if provider_lower == "openai" and not openai_key:
@@ -2820,7 +2807,6 @@ async def translate_manga_from_url(request: MangaTranslateURLRequest):
         if provider_lower == "gemini" and not gemini_key:
             raise HTTPException(status_code=400, detail="Gemini API key required for Gemini provider.")
 
-        provider = request.provider or os.getenv("LLM_PROVIDER", "openai").lower()
         translator = get_manga_translator(
             source_lang=request.source_lang,
             provider=provider,
@@ -2852,10 +2838,11 @@ async def translate_manga_from_url(request: MangaTranslateURLRequest):
         
         # Determine the correct referer for hotlink protection
         referer = request.url
-        if "webtoons.com" in request.url:
+        source_host = url_host(request.url)
+        if is_webtoons_host(request.url):
             # For Webtoons, use the main page as referer
             referer = "https://www.webtoons.com/"
-        elif "naver" in request.url or "phinf.pstatic.net" in request.url:
+        elif host_matches(source_host, "naver.com") or host_matches(source_host, "pstatic.net"):
             referer = "https://www.webtoons.com/"
         
         headers = {
@@ -2863,15 +2850,21 @@ async def translate_manga_from_url(request: MangaTranslateURLRequest):
             "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9,ko;q=0.8",
             "Referer": referer,
-            "Origin": "https://www.webtoons.com" if "webtoons.com" in request.url else "",
+            "Origin": "https://www.webtoons.com" if is_webtoons_host(request.url) else "",
         }
         
+        headers = {k: v for k, v in headers.items() if v}
         async with httpx.AsyncClient(timeout=60, headers=headers) as client:
             for page_info in fetch_result.pages:
                 try:
-                    # Download image with headers (client already has headers set)
-                    img_response = await client.get(page_info.image_url, follow_redirects=True)
-                    img_response.raise_for_status()
+                    # Download through the SSRF guard: only manga hosts and
+                    # their image CDNs, pinned to a validated public address.
+                    img_response = await safe_get(
+                        client,
+                        page_info.image_url,
+                        allowed_domains=manga_image_domains(),
+                        max_bytes=MAX_MANGA_IMAGE_BYTES,
+                    )
 
                     image = Image.open(BytesIO(img_response.content))
 
@@ -2899,6 +2892,12 @@ async def translate_manga_from_url(request: MangaTranslateURLRequest):
                         "regions_count": len(result.regions),
                     })
 
+                except UnsafeURLError as e:
+                    results.append({
+                        "page_number": page_info.page_number,
+                        "error": f"Image URL refused: {e}",
+                    })
+                    continue
                 except Exception as e:
                     print(f"Failed to translate page {page_info.page_number}: {e}")
                     results.append({
@@ -2934,13 +2933,13 @@ async def get_supported_manga_sites():
             },
             {
                 "name": "Bato.to",
-                "domains": ["bato.to", "batoto"],
+                "domains": ["bato.to"],
                 "example": "https://bato.to/title/.../chapter-...",
                 "notes": "Works well - Manhwa and Manga"
             },
             {
                 "name": "MangaKakalot / MangaNato",
-                "domains": ["mangakakalot.com", "manganato.com", "manganelo.com"],
+                "domains": ["mangakakalot.com", "manganato.com", "chapmanganato.to", "manganelo.com"],
                 "example": "https://mangakakalot.com/chapter/...",
                 "notes": "Works well - Large manga library"
             },
@@ -2952,7 +2951,7 @@ async def get_supported_manga_sites():
             },
             {
                 "name": "Asura Scans",
-                "domains": ["asurascans.com", "asuracomic.com"],
+                "domains": ["asuracomic.net", "asurascans.com"],
                 "example": "https://asurascans.com/.../chapter-...",
                 "notes": "Korean manhwa translations"
             },
@@ -2964,7 +2963,7 @@ async def get_supported_manga_sites():
             },
             {
                 "name": "Flame Comics",
-                "domains": ["flamecomics.com"],
+                "domains": ["flamecomics.xyz", "flamecomics.com"],
                 "example": "https://flamecomics.com/.../chapter-...",
                 "notes": "Korean manhwa scanlation"
             },
@@ -2976,9 +2975,9 @@ async def get_supported_manga_sites():
             },
             {
                 "name": "Other Manga Sites",
-                "domains": ["*"],
-                "example": "Any URL with manga images",
-                "notes": "Best effort - May work on other sites"
+                "domains": [],
+                "example": "Set MANGA_EXTRA_ALLOWED_HOSTS on the ai-service",
+                "notes": "Best effort - only hosts the operator allow-lists"
             }
         ]
     }
