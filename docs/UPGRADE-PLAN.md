@@ -75,13 +75,18 @@ Local check commands:
 - Replace `<img>` with `next/image` and fix the `react-hooks/exhaustive-deps`
   warnings reported by `npm run lint`.
 - Consolidate the overlapping `ci.yml` and per-service workflows.
-- 008 down drops `stripe_event_at` and 009 down drops `role`, which
-  init.sql also creates: rolling an init.sql database back past them loses
-  webhook ordering and admin grants. Decide whether they should follow the
-  007/010 rule (down never drops init.sql columns) and extend the
-  `check-migrations.sh` rollback phase accordingly.
 
 ## Done in this pass (pass 11: safe migration rollbacks)
+- `008` down dropped `stripe_event_at` and `009` down dropped `role` and
+  `users_role_check`, all of which `database/init.sql` creates: rolling an
+  init.sql database back past them lost webhook ordering (a stale webhook
+  could re-activate a canceled subscription) and demoted every admin. Both
+  downs are now documented no-ops (rule: a down never drops what init.sql
+  creates; migrations-only databases lose the columns with `users` in 001
+  down). The rollback phase of `check-migrations.sh` now also requires
+  `stripe_event_at` / `role` (with data) and `users_role_check` to survive
+  the 010..007 downs; it fails on the old 008/009 and passes now on local
+  Postgres 16 (full up/down/up + init.sql rollback).
 - `007` down dropped `stripe_customer_id` / `stripe_subscription_id`, which
   databases built from `database/init.sql` had before 007 existed: a
   rollback destroyed the billing link to Stripe. It now drops only its
