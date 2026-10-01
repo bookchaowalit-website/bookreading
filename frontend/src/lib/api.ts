@@ -36,7 +36,14 @@ export interface User {
   avatar_url: string;
   subscription_plan: string;
   subscription_status: string;
+  /** 'user' or 'admin' (backend migration 009). Admins moderate the review queue. */
+  role?: 'user' | 'admin' | string;
   created_at: string;
+}
+
+/** True only for an account the backend reports as admin. */
+export function isAdminUser(user: Pick<User, 'role'> | null | undefined): boolean {
+  return user?.role === 'admin';
 }
 
 export interface Novel {
