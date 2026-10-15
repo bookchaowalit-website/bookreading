@@ -245,6 +245,22 @@ cd ai-service && pytest -m integration -v
 cd frontend && npm test
 ```
 
+Frontend CI installs the tracked `frontend/package-lock.json` with `npm ci`.
+To run its checks locally from `frontend/`:
+
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm test -- --coverage
+npm run build
+```
+
+The V8 coverage provider is pinned to the Vitest version in the lockfile.
+Coverage writes `frontend/coverage/lcov.info` for the CI coverage upload;
+generated reports are ignored by Git. Changes to the frontend CI workflow
+also trigger its jobs.
+
 ### Lint
 ```bash
 # Backend

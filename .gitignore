@@ -22,6 +22,7 @@ ai-service/.pytest_cache/
 frontend/.next/
 frontend/out/
 frontend/build/
+frontend/coverage/
 
 # Playwright
 frontend/playwright-report/
